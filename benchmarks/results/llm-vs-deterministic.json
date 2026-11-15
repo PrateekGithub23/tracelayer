@@ -1,0 +1,433 @@
+{
+  "investigations": [
+    {
+      "investigation": "synthetic: 7-stage intrusion",
+      "events_in_scope": 474,
+      "detections": 11,
+      "deterministic": {
+        "latency_ms": 0.9,
+        "json_valid": true,
+        "claims": 22,
+        "verdicts": {
+          "heuristic_correlation": 8,
+          "verified_observation": 9,
+          "ai_hypothesis": 3,
+          "missing_evidence": 2
+        },
+        "unsafe_claims": 0,
+        "fabricated_citations": 0,
+        "out_of_scope_citations": 0,
+        "citation_validity": 0.995,
+        "requires_review": 5,
+        "detection_coverage": 1.0,
+        "summary_issues": 0,
+        "integrity_score": 85.5
+      },
+      "llm_runs": [
+        {
+          "run": 1,
+          "json_valid": true,
+          "latency_ms": 13247.6,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 463,
+          "claims": 11,
+          "verdicts": {
+            "heuristic_correlation": 1,
+            "verified_observation": 7,
+            "contradictory_finding": 2,
+            "unsupported_claim": 1
+          },
+          "unsafe_claims": 3,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 3,
+          "detection_coverage": 0.909,
+          "summary_issues": 0,
+          "integrity_score": 71.4
+        },
+        {
+          "run": 2,
+          "json_valid": true,
+          "latency_ms": 17572.7,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 622,
+          "claims": 11,
+          "verdicts": {
+            "heuristic_correlation": 1,
+            "verified_observation": 6,
+            "unsupported_claim": 2,
+            "contradictory_finding": 2
+          },
+          "unsafe_claims": 4,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 4,
+          "detection_coverage": 0.818,
+          "summary_issues": 0,
+          "integrity_score": 62.3
+        },
+        {
+          "run": 3,
+          "json_valid": true,
+          "latency_ms": 13060.1,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 460,
+          "claims": 11,
+          "verdicts": {
+            "heuristic_correlation": 1,
+            "verified_observation": 6,
+            "contradictory_finding": 2,
+            "unsupported_claim": 2
+          },
+          "unsafe_claims": 4,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 4,
+          "detection_coverage": 0.818,
+          "summary_issues": 0,
+          "integrity_score": 62.3
+        },
+        {
+          "run": 4,
+          "json_valid": true,
+          "latency_ms": 12915.9,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 459,
+          "claims": 11,
+          "verdicts": {
+            "heuristic_correlation": 1,
+            "verified_observation": 7,
+            "contradictory_finding": 2,
+            "unsupported_claim": 1
+          },
+          "unsafe_claims": 3,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 3,
+          "detection_coverage": 0.909,
+          "summary_issues": 0,
+          "integrity_score": 71.4
+        },
+        {
+          "run": 5,
+          "json_valid": true,
+          "latency_ms": 12546.8,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 443,
+          "claims": 11,
+          "verdicts": {
+            "heuristic_correlation": 1,
+            "verified_observation": 4,
+            "contradictory_finding": 2,
+            "unsupported_claim": 4
+          },
+          "unsafe_claims": 6,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 6,
+          "detection_coverage": 0.636,
+          "summary_issues": 0,
+          "integrity_score": 44.1
+        }
+      ]
+    },
+    {
+      "investigation": "synthetic: SSH brute force",
+      "events_in_scope": 25,
+      "detections": 1,
+      "deterministic": {
+        "latency_ms": 0.4,
+        "json_valid": true,
+        "claims": 2,
+        "verdicts": {
+          "verified_observation": 1,
+          "ai_hypothesis": 1
+        },
+        "unsafe_claims": 0,
+        "fabricated_citations": 0,
+        "out_of_scope_citations": 0,
+        "citation_validity": 1.0,
+        "requires_review": 1,
+        "detection_coverage": 1.0,
+        "summary_issues": 0,
+        "integrity_score": 80.0
+      },
+      "llm_runs": [
+        {
+          "run": 1,
+          "json_valid": true,
+          "latency_ms": 34931.8,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 1316,
+          "claims": 12,
+          "verdicts": {
+            "unsupported_claim": 7,
+            "verified_observation": 1,
+            "heuristic_correlation": 1,
+            "ai_hypothesis": 3
+          },
+          "unsafe_claims": 7,
+          "fabricated_citations": 9,
+          "out_of_scope_citations": 0,
+          "citation_validity": 0.957,
+          "requires_review": 10,
+          "detection_coverage": 1.0,
+          "summary_issues": 0,
+          "integrity_score": 30.4
+        },
+        {
+          "run": 2,
+          "json_valid": true,
+          "latency_ms": 17810.2,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 663,
+          "claims": 11,
+          "verdicts": {
+            "unsupported_claim": 11
+          },
+          "unsafe_claims": 11,
+          "fabricated_citations": 60,
+          "out_of_scope_citations": 0,
+          "citation_validity": 0.0,
+          "requires_review": 11,
+          "detection_coverage": 0.0,
+          "summary_issues": 0,
+          "integrity_score": 0.0
+        },
+        {
+          "run": 3,
+          "json_valid": true,
+          "latency_ms": 17414.1,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 602,
+          "claims": 13,
+          "verdicts": {
+            "unsupported_claim": 13
+          },
+          "unsafe_claims": 13,
+          "fabricated_citations": 19,
+          "out_of_scope_citations": 0,
+          "citation_validity": 0.0,
+          "requires_review": 13,
+          "detection_coverage": 0.0,
+          "summary_issues": 0,
+          "integrity_score": 0.0
+        },
+        {
+          "run": 4,
+          "json_valid": true,
+          "latency_ms": 17786.7,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 599,
+          "claims": 12,
+          "verdicts": {
+            "unsupported_claim": 12
+          },
+          "unsafe_claims": 12,
+          "fabricated_citations": 16,
+          "out_of_scope_citations": 0,
+          "citation_validity": 0.0,
+          "requires_review": 12,
+          "detection_coverage": 0.0,
+          "summary_issues": 0,
+          "integrity_score": 0.0
+        },
+        {
+          "run": 5,
+          "json_valid": true,
+          "latency_ms": 23801.0,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 822,
+          "claims": 9,
+          "verdicts": {
+            "unsupported_claim": 9
+          },
+          "unsafe_claims": 9,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 9,
+          "detection_coverage": 0.0,
+          "summary_issues": 0,
+          "integrity_score": 0.0
+        }
+      ]
+    },
+    {
+      "investigation": "OTRF lab: WMIC backdoor",
+      "events_in_scope": 1507,
+      "detections": 5,
+      "deterministic": {
+        "latency_ms": 1.8,
+        "json_valid": true,
+        "claims": 3,
+        "verdicts": {
+          "verified_observation": 2,
+          "heuristic_correlation": 1
+        },
+        "unsafe_claims": 0,
+        "fabricated_citations": 0,
+        "out_of_scope_citations": 0,
+        "citation_validity": 1.0,
+        "requires_review": 0,
+        "detection_coverage": 0.8,
+        "summary_issues": 0,
+        "integrity_score": 95.0
+      },
+      "llm_runs": [
+        {
+          "run": 1,
+          "json_valid": true,
+          "latency_ms": 27878.6,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 860,
+          "claims": 13,
+          "verdicts": {
+            "unsupported_claim": 3,
+            "verified_observation": 1,
+            "heuristic_correlation": 9
+          },
+          "unsafe_claims": 3,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 3,
+          "detection_coverage": 1.0,
+          "summary_issues": 0,
+          "integrity_score": 66.5
+        },
+        {
+          "run": 2,
+          "json_valid": true,
+          "latency_ms": 15798.4,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 556,
+          "claims": 11,
+          "verdicts": {
+            "verified_observation": 4,
+            "unsupported_claim": 7
+          },
+          "unsafe_claims": 7,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 7,
+          "detection_coverage": 1.0,
+          "summary_issues": 0,
+          "integrity_score": 36.4
+        },
+        {
+          "run": 3,
+          "json_valid": true,
+          "latency_ms": 16449.9,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 582,
+          "claims": 10,
+          "verdicts": {
+            "unsupported_claim": 5,
+            "verified_observation": 1,
+            "heuristic_correlation": 2,
+            "ai_hypothesis": 2
+          },
+          "unsafe_claims": 5,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 7,
+          "detection_coverage": 1.0,
+          "summary_issues": 0,
+          "integrity_score": 39.0
+        },
+        {
+          "run": 4,
+          "json_valid": true,
+          "latency_ms": 20249.9,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 706,
+          "claims": 13,
+          "verdicts": {
+            "unsupported_claim": 5,
+            "verified_observation": 1,
+            "heuristic_correlation": 7
+          },
+          "unsafe_claims": 5,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 5,
+          "detection_coverage": 0.6,
+          "summary_issues": 0,
+          "integrity_score": 53.5
+        },
+        {
+          "run": 5,
+          "json_valid": true,
+          "latency_ms": 16996.6,
+          "model": "llama3.2:3b",
+          "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+          "output_tokens": 571,
+          "claims": 10,
+          "verdicts": {
+            "unsupported_claim": 4,
+            "verified_observation": 1,
+            "ai_hypothesis": 5
+          },
+          "unsafe_claims": 4,
+          "fabricated_citations": 0,
+          "out_of_scope_citations": 0,
+          "citation_validity": 1.0,
+          "requires_review": 9,
+          "detection_coverage": 0.4,
+          "summary_issues": 0,
+          "integrity_score": 40.0
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "llm_runs": 15,
+    "llm_invalid_json": 0,
+    "llm_other_failures": 0,
+    "llm_latency_ms": 18564.02,
+    "llm_claims": 11.267,
+    "llm_unsafe_claims": 6.4,
+    "llm_fabricated_citations": 6.933,
+    "llm_citation_validity": 0.797,
+    "llm_requires_review": 7.067,
+    "llm_detection_coverage": 0.606,
+    "llm_integrity_score": 38.487,
+    "det_latency_ms": 1.033,
+    "det_claims": 9,
+    "det_unsafe_claims": 0,
+    "det_fabricated_citations": 0,
+    "det_citation_validity": 0.998,
+    "det_requires_review": 2,
+    "det_detection_coverage": 0.933,
+    "det_integrity_score": 86.833,
+    "llm_latency_p95_ms": 27878.6
+  },
+  "environment": {
+    "python": "3.12.16",
+    "platform": "macOS-26.3.1-arm64-arm-64bit",
+    "runs_per_investigation": 5
+  }
+}

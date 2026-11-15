@@ -11,6 +11,7 @@ Regardless of the generator, output goes through the same integrity validator,
 and is stored as `pending_review` until an analyst approves it.
 """
 
+import threading
 import time
 from typing import Any
 
@@ -34,9 +35,28 @@ class AnalysisError(RuntimeError):
     pass
 
 
-def ollama_client() -> OllamaClient:
+# One model generation at a time: a 3B model already saturates a laptop GPU, and this bounds the
+# cost any user (including a demo account) can impose. Extra requests get HTTP 429, they do not queue.
+_GENERATION_SLOT = threading.BoundedSemaphore(1)
+
+
+class ModelBusy(AnalysisError):
+    pass
+
+
+def effective_llm(db: Session | None = None) -> tuple[str, str]:
+    """(mode, model): admin overrides from app_settings take precedence over environment defaults."""
     s = get_settings()
-    return OllamaClient(s.ollama_url, s.ollama_model, s.ollama_timeout_s)
+    if db is None:
+        return s.llm_mode, s.ollama_model
+    from app.auth.users import get_setting
+
+    return get_setting(db, "llm_mode", s.llm_mode), get_setting(db, "ollama_model", s.ollama_model)
+
+
+def ollama_client(db: Session | None = None) -> OllamaClient:
+    s = get_settings()
+    return OllamaClient(s.ollama_url, effective_llm(db)[1], s.ollama_timeout_s)
 
 
 def summary_issues(summary: str, scope: Scope) -> list[str]:
@@ -56,37 +76,53 @@ def validate_output(output: AnalysisOutput, scope: Scope) -> tuple[list[ClaimRes
     return results, integrity
 
 
-def _generate(scope: Scope, inv: Investigation, engine: str) -> dict[str, Any]:
+def _generate(scope: Scope, inv: Investigation, engine: str, db: Session | None = None) -> dict[str, Any]:
     settings = get_settings()
+    mode, _model = effective_llm(db)
     prompt, pack_sha, pack_meta = build_prompt(scope, inv, settings.llm_max_events)
     fallback_reason: str | None = None
-    want_llm = engine == "ollama" or (engine == "auto" and settings.llm_mode != "deterministic")
+    want_llm = engine == "ollama" or (engine == "auto" and mode != "deterministic")
+    provenance: dict[str, Any] = {"requested_engine": engine, "configured_mode": mode, "llm_attempted": want_llm}
 
     if want_llm:
-        client = ollama_client()
+        client = ollama_client(db)
         status = client.status()
+        provenance.update({"model": client.model, "model_digest": status.get("digest"),
+                           "ollama_version": status.get("version"), "quantization": status.get("quantization"),
+                           "parameter_size": status.get("parameter_size")})  # fmt: skip
         try:
             if not status["reachable"]:
                 raise OllamaError(f"Ollama not reachable at {client.base_url} ({status['error']})")
             if not status["model_available"]:
                 raise OllamaError(f"model '{client.model}' is not pulled (run: ollama pull {client.model})")
-            content, meta = client.chat_json(SYSTEM_PROMPT, prompt, JSON_SCHEMA)
+            if not _GENERATION_SLOT.acquire(blocking=False):
+                raise ModelBusy("the local model is busy with another analysis; try again shortly")
+            try:
+                content, meta = client.chat_json(SYSTEM_PROMPT, prompt, JSON_SCHEMA)
+            finally:
+                _GENERATION_SLOT.release()
+            provenance["model_latency_ms"] = meta.get("wall_ms")
             try:
                 output = parse_analysis_output(content)
+                provenance["json_valid"] = True
             except ValueError as exc:
+                provenance["json_valid"] = False
                 raise OllamaError(f"model output rejected: {exc}") from exc
             return {"engine": "ollama", "model": client.model, "output": output, "raw": content,
                     "prompt_sha": sha256_hex(SYSTEM_PROMPT + prompt), "pack_sha": pack_sha,
-                    "meta": {**meta, **pack_meta, "event_ids": None}, "fallback_reason": None}  # fmt: skip
+                    "meta": {**meta, **pack_meta, "event_ids": None}, "fallback_reason": None,
+                    "provenance": {**provenance, "engine_used": "ollama"}}  # fmt: skip
         except OllamaError as exc:
             if engine == "ollama":
                 raise AnalysisError(str(exc)) from exc
             fallback_reason = str(exc)
 
     output, meta = deterministic.analyze(scope, inv)
+    # The fallback is recorded as what it is: engine "deterministic", with the reason the model was not used.
     return {"engine": "deterministic", "model": "templates-v1", "output": output, "raw": output.model_dump_json(),
             "prompt_sha": None, "pack_sha": sha256_hex(",".join(sorted(scope.events))), "meta": meta,
-            "fallback_reason": fallback_reason}  # fmt: skip
+            "fallback_reason": fallback_reason,
+            "provenance": {**provenance, "engine_used": "deterministic", "fallback": fallback_reason is not None}}  # fmt: skip
 
 
 def run_analysis(db: Session, investigation_id: str, engine: str = "auto", actor: str = "system") -> AIAnalysis:
@@ -98,13 +134,15 @@ def run_analysis(db: Session, investigation_id: str, engine: str = "auto", actor
         raise AnalysisError("investigation has no events in scope")
 
     t0 = time.perf_counter()
-    gen = _generate(scope, inv, engine)
+    gen = _generate(scope, inv, engine, db)
     t_gen = time.perf_counter()
     results, integrity = validate_output(gen["output"], scope)
     integrity["validation_ms"] = round((time.perf_counter() - t_gen) * 1000, 2)
     integrity["generation_ms"] = round((t_gen - t0) * 1000, 2)
     integrity["generator_meta"] = {k: v for k, v in gen["meta"].items() if k != "event_ids"}
     integrity["recommendations"] = gen["output"].recommendations
+    integrity["generation"] = gen["provenance"]
+    integrity["claims_requiring_review"] = sum(1 for r in results if r.checks.get("requires_review"))
 
     analysis = AIAnalysis(
         id=new_id("ana"), investigation_id=inv.id, engine=gen["engine"], model=gen["model"],

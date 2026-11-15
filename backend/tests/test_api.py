@@ -245,3 +245,32 @@ def test_security_headers_and_latency_telemetry(client: TestClient) -> None:
     assert r.headers["x-content-type-options"] == "nosniff" and r.headers["x-frame-options"] == "DENY"
     perf = client.get("/api/metrics/performance").json()
     assert any(row["route"] == "GET /api/health" for row in perf["api_latency"])
+
+
+def test_standalone_verifier_accepts_bundle_and_detects_tampering(
+    client: TestClient, seeded: dict[str, Any], tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    """tools/verify_bundle.py (stdlib only) must verify a real export and catch an edited event."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    tool = Path(__file__).resolve().parents[2] / "tools" / "verify_bundle.py"
+    bundle = tmp_path / "b.zip"
+    bundle.write_bytes(client.get(f"/api/investigations/{seeded['main']['id']}/export?format=zip").content)
+    ok = subprocess.run([sys.executable, "-I", str(tool), str(bundle)], capture_output=True, text=True)
+    assert ok.returncode == 0 and "VERIFIED" in ok.stdout, ok.stdout + ok.stderr
+    # Tamper: change one event's raw record but keep the manifest -> both file hash and event hash fail.
+    with zipfile.ZipFile(bundle) as z:
+        files = {n: z.read(n) for n in z.namelist()}
+    lines = files["events.jsonl"].decode().splitlines()
+    ev = json.loads(lines[0])
+    ev["raw"]["username"] = "mallory"
+    lines[0] = json.dumps(ev, sort_keys=True, separators=(",", ":"))
+    files["events.jsonl"] = ("\n".join(lines) + "\n").encode()
+    bad = tmp_path / "bad.zip"
+    with zipfile.ZipFile(bad, "w") as z:
+        for n, d in files.items():
+            z.writestr(n, d)
+    out = subprocess.run([sys.executable, "-I", str(tool), str(bad)], capture_output=True, text=True)
+    assert out.returncode == 1 and "raw record does not match content_hash" in out.stdout

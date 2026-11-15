@@ -19,8 +19,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import audit
 from app.ai.schema import parse_analysis_output
-from app.ai.service import AnalysisError, run_analysis, validate_external
+from app.ai.service import AnalysisError, ModelBusy, run_analysis, validate_external
 from app.api.deps import require
+from app.auth import ratelimit
 from app.auth.sessions import Principal
 from app.db import get_db
 from app.db_utils import count_map
@@ -204,8 +205,17 @@ def export(inv_id: str, format: str = Query(default="zip", pattern="^(zip|json|m
 def create_analysis(inv_id: str, body: AnalysisRequest, db: Session = Depends(get_db),
                     p: Principal = Depends(require("analyses:create"))) -> AIAnalysis:  # fmt: skip
     _inv(db, inv_id)
+    # Bounded inference: per-user rate limit, and demo accounts never reach the model.
+    wait = ratelimit.limiter.check(f"analysis:{p.user.id}", 30, 3600)
+    if wait is not None:
+        raise HTTPException(
+            429, "analysis rate limit reached (30 per hour)", headers={"Retry-After": str(int(wait) + 1)}
+        )
+    engine = "deterministic" if p.user.is_demo else body.engine
     try:
-        analysis = run_analysis(db, inv_id, body.engine, p.actor)
+        analysis = run_analysis(db, inv_id, engine, p.actor)
+    except ModelBusy as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": "30"}) from exc
     except AnalysisError as exc:
         raise HTTPException(422, str(exc)) from exc
     return _analysis(db, analysis.id)

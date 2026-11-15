@@ -7,7 +7,7 @@ import { useState } from "react";
 import { VerdictBar } from "../components/AnalysisPanel";
 import { Button, Card, EmptyState, ErrorState, PageHeader, Pill, Select, Spinner, Stat, Tabs, VerdictBadge } from "../components/ui";
 import { useAuth } from "../lib/auth";
-import { api } from "../lib/api";
+import { api, isDemoTransport } from "../lib/api";
 import { fmtMs, fmtRelative, fmtTime, shortHash, UNSAFE, VERDICT_META, VERDICTS } from "../lib/format";
 import type { Verdict } from "../lib/types";
 import { useRun } from "../lib/useRun";
@@ -171,6 +171,8 @@ function Playground() {
   const { can } = useAuth();
   const validate = useMutation({ mutationFn: () => api.validate(inv || invs.data?.[0]?.id || "", text) });
   const r = validate.data;
+  // In the demo the validator cannot run (it is Python); prepared examples carry the real engine's output.
+  const examples = useQuery({ queryKey: ["demo-examples"], queryFn: api.demoExamples, enabled: isDemoTransport() });
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <Card title="Validate any analysis" subtitle="Paste output from another model, a colleague's draft, or an attack. Nothing is stored.">
@@ -180,6 +182,12 @@ function Playground() {
           <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false}
             className="h-[380px] w-full rounded-lg border border-ink-600 bg-ink-950 p-3 font-mono text-[12px] leading-relaxed focus:border-sky-500 focus:outline-none" />
           <Button variant="primary" disabled={!invs.data?.length || validate.isPending || !can("integrity:validate")} title={can("integrity:validate") ? undefined : "Viewers cannot run the validator"} onClick={() => validate.mutate()}><ShieldCheck className="h-4 w-4" /> Validate</Button>
+          {examples.data && (
+            <div className="flex flex-wrap gap-2 text-[12px]">
+              <span className="text-fg-faint">Prepared examples:</span>
+              {examples.data.map((x) => <Button key={x.title} size="sm" onClick={() => { setText(x.output); setInv(x.investigation_id); }}>{x.title}</Button>)}
+            </div>
+          )}
           <p className="text-[11.5px] text-fg-faint">Citations are short refs (E1…En in the investigation's Events tab) or full event ids.</p>
         </div>
       </Card>

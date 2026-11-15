@@ -1,0 +1,16 @@
+# Production overrides:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Refuses to start without real secrets, and the API refuses to start without HTTPS-only cookies.
+# Put a TLS-terminating reverse proxy in front of port 8080 (see docs/DEPLOYMENT.md).
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      TL_APP_PASSWORD: ${TL_APP_PASSWORD:?set TL_APP_PASSWORD}
+  api:
+    environment:
+      TRACELAYER_DATABASE_URL: postgresql+psycopg://tracelayer_app:${TL_APP_PASSWORD:?set TL_APP_PASSWORD}@db:5432/tracelayer
+      TRACELAYER_MIGRATION_DATABASE_URL: postgresql+psycopg://tracelayer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/tracelayer
+      TRACELAYER_ENV: production
+      TRACELAYER_COOKIE_SECURE: "true"
+      TRACELAYER_ALLOW_SYNTHETIC: "false"
+      TRACELAYER_REGISTRATION_MODE: invite

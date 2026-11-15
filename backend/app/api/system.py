@@ -8,7 +8,7 @@ from sqlalchemy import String, cast, func, select, text
 from sqlalchemy.orm import Session
 
 from app import __version__, audit, jobs, telemetry
-from app.ai.service import ollama_client
+from app.ai.service import effective_llm, ollama_client
 from app.api.deps import require
 from app.audit import verify_audit_chain
 from app.auth.sessions import Principal
@@ -42,12 +42,13 @@ def health(db: Session = Depends(get_db)) -> dict[str, str]:
 @router.get("/system/status")
 def system_status(db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
     s = get_settings()
-    llm = ollama_client().status() if s.llm_mode != "deterministic" else {"reachable": False, "disabled": True}
+    mode, model = effective_llm(db)
+    llm = ollama_client(db).status() if mode != "deterministic" else {"reachable": False, "disabled": True}
     return {
         "version": __version__,
         "database": db.get_bind().dialect.name,
         "auth_required": True,
-        "llm": {**llm, "mode": s.llm_mode, "url": s.ollama_url, "configured_model": s.ollama_model},
+        "llm": {**llm, "mode": mode, "url": s.ollama_url, "configured_model": model},
         "background_jobs": s.background_jobs,
     }
 

@@ -73,6 +73,8 @@ function ClaimCard({ claim, analysis, refByEvent }: { claim: Claim; analysis: An
           <div className="flex flex-wrap items-center gap-2">
             <VerdictBadge verdict={claim.verdict} />
             <Pill>declared: {claim.declared_kind}</Pill>
+            {checks?.requires_review && claim.review_status === "pending" && <Pill className="text-amber-200">needs analyst review</Pill>}
+            {(checks?.warnings?.length ?? 0) > 0 && <Pill className="text-amber-200" >{checks.warnings[0]}</Pill>}
             {claim.review_status !== "pending" && (
               <span className={clsx("inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium",
                 claim.review_status === "accepted" ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300")}>
@@ -104,6 +106,13 @@ function ClaimCard({ claim, analysis, refByEvent }: { claim: Claim; analysis: An
               <ul className="list-disc space-y-1 pl-4 text-fg-muted">{claim.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
               {checks.extracted && (
                 <div className="grid gap-1 pt-1 text-[11.5px] text-fg-faint sm:grid-cols-2">
+                  {Array.isArray(checks.stages) && (
+                    <ol className="mb-2 space-y-0.5 border-l border-ink-600 pl-3">
+                      {checks.stages.map((st: { stage: string; result: string }) => (
+                        <li key={st.stage}><span className="text-fg-muted">{st.stage}:</span> {st.result}</li>
+                      ))}
+                    </ol>
+                  )}
                   <div>Entities: <span className="font-mono text-fg-muted">{[...checks.extracted.users, ...checks.extracted.hosts, ...checks.extracted.ips].join(", ") || "none"}</span></div>
                   <div>Activities: <span className="text-fg-muted">{checks.extracted.activities.join(", ") || "none recognised"}</span></div>
                   {checks.count_checks?.map((c: any, i: number) => (
@@ -170,7 +179,10 @@ function AnalysisView({ analysis, refByEvent }: { analysis: Analysis; refByEvent
         <div className="space-y-3 rounded-xl border border-ink-700 bg-ink-850/80 p-4">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
             {analysis.engine === "ollama" ? <Bot className="h-4 w-4 text-sky-300" /> : <Cpu className="h-4 w-4 text-emerald-300" />}
-            <span className="text-fg">{analysis.engine}</span> · <span className="font-mono">{analysis.model}</span> · generated in {fmtMs(integ.generation_ms)} · validated in {fmtMs(integ.validation_ms)} · {fmtRelative(analysis.created_at)}
+            <span className="text-fg">{analysis.engine}</span> · <span className="font-mono" title={(integ as any).generation?.model_digest ?? undefined}>{analysis.model}</span>
+            {(integ as any).generation?.ollama_version && <span>· Ollama {(integ as any).generation.ollama_version}</span>}
+            {(integ as any).generation?.requested_engine && <span>· requested “{(integ as any).generation.requested_engine}”</span>}
+            · generated in {fmtMs(integ.generation_ms)} · validated in {fmtMs(integ.validation_ms)} · {fmtRelative(analysis.created_at)}
             <span className="ml-auto font-mono text-[11px] text-fg-faint" title="SHA-256 of the evidence handed to the generator">pack {shortHash(analysis.evidence_pack_sha256)}</span>
           </div>
           <VerdictBar verdicts={integ.verdicts} />

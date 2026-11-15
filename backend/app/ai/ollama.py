@@ -28,12 +28,20 @@ class OllamaClient:
         try:
             r = httpx.get(f"{self.base_url}/api/tags", timeout=2.0)
             r.raise_for_status()
-            models = [m.get("name", "") for m in r.json().get("models", [])]
+            listing = r.json().get("models", [])
+            version = httpx.get(f"{self.base_url}/api/version", timeout=2.0).json().get("version")
         except (httpx.HTTPError, ValueError) as exc:
-            return {"reachable": False, "model": self.model, "model_available": False, "models": [],
-                    "error": f"{type(exc).__name__}: {exc}"[:300]}  # fmt: skip
-        available = any(m == self.model or m.split(":")[0] == self.model for m in models)
-        return {"reachable": True, "model": self.model, "model_available": available, "models": models, "error": None}
+            return {"reachable": False, "model": self.model, "model_available": False, "models": [], "version": None,
+                    "digest": None, "error": f"{type(exc).__name__}: {exc}"[:300]}  # fmt: skip
+        models = [m.get("name", "") for m in listing]
+        match = next(
+            (m for m in listing if m.get("name") == self.model or m.get("name", "").split(":")[0] == self.model), None
+        )
+        details = (match or {}).get("details") or {}
+        return {"reachable": True, "model": self.model, "model_available": match is not None, "models": models,
+                "version": version, "digest": (match or {}).get("digest"), "size_bytes": (match or {}).get("size"),
+                "parameter_size": details.get("parameter_size"), "quantization": details.get("quantization_level"),
+                "error": None}  # fmt: skip
 
     def chat_json(self, system: str, user: str, schema: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         body = {

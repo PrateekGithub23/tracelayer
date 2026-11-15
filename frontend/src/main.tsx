@@ -9,8 +9,12 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { InspectorProvider } from "./components/EvidenceInspector";
 import { ToastProvider } from "./components/Toast";
-import { ApiError } from "./lib/api";
+import { demoTransport } from "./demo/transport";
+import { ApiError, setTransport } from "./lib/api";
 import { AuthProvider } from "./lib/auth";
+
+// The public demo build (VITE_DEMO=1) serves recorded API responses from the browser: no backend at all.
+if (import.meta.env.VITE_DEMO === "1") setTransport(demoTransport);
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -228,6 +228,8 @@ export const api = {
   importDataset: (did: string) => request<Run>("POST", `/datasets/${did}/import`),
   llmStatus: () => request<LlmStatus>("GET", "/llm/status"),
   llmTest: () => request<Record<string, any>>("POST", "/llm/test"),
+  /** Demo transport only: validator examples whose results were recorded from the real engine. */
+  demoExamples: () => request<{ title: string; investigation_id: string; output: string; result: any }[]>("GET", "/demo/examples"),
 
   /** Exports go through the transport (not a plain link) so the session and CSRF rules apply. */
   async download(invId: string, format: string): Promise<void> {

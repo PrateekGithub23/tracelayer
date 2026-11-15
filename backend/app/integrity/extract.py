@@ -72,6 +72,8 @@ _ACTIVITY: list[tuple[str, str, frozenset[str], str | None, str | None, bool]] =
     (r"file (?:access|reads?)|accessed files?", "file access", frozenset({"file.access"}), None, None, False),
 ]  # fmt: skip
 _ACTIVITY_RE = [(re.compile(rx, re.I), lbl, t, o, k, x) for rx, lbl, t, o, k, x in _ACTIVITY]
+# v2: any named Windows binary ("net.exe", "Wmic.exe") is a process-execution mention keyed on that binary.
+_EXE_RE = re.compile(r"\b([\w-]+\.exe)\b", re.I)
 
 # "process telemetry", "network logs" ... used in coverage-gap statements.
 _TELEMETRY_WORDS = {
@@ -195,6 +197,13 @@ _STOP = {
     "within", "over", "across", "during", "inside", "under", "between", "via", "through", "into", "onto", "using",
     "while", "where", "when", "both", "all", "each", "multiple", "several", "other", "same", "new", "remote",
     "entities", "entity", "include", "including", "such", "like", "named", "listed",
+    # v2 (found on real OTRF telemetry): prose nouns that commonly follow "user"/"account"/"host" and are
+    # never names, e.g. "Account creation via net.exe", "normal user behaviour".
+    "creation", "creations", "behaviour", "behavior", "management", "lockout", "lockouts", "enumeration",
+    "discovery", "manipulation", "privileges", "permissions", "policy", "policies", "rights", "settings",
+    "control", "compromise", "takeover", "provisioning", "deletion", "modification", "changes", "change",
+    "access", "information", "data", "context", "profile", "profiles", "password", "passwords", "directory",
+    "security", "logons", "agent", "agents", "interaction", "input", "accounts'", "isolation", "inventory",
 }  # fmt: skip
 # Real usernames that are also ordinary words: only counted when introduced by "user X".
 _COMMON_NAMES = {"admin", "root", "test", "guest", "service", "backup", "support", "info", "mail", "web", "oracle",
@@ -388,6 +397,14 @@ def extract(text: str, scope: Scope) -> Assertions:
             if any(abs(x.start - m.start()) < 3 and x.types == types for x in a.mentions):
                 continue
             a.mentions.append(Mention(label, types, outcome, keyword, external, m.start(), negated))
+    for m in _EXE_RE.finditer(body):
+        exe = m.group(1).lower()
+        if any(x.keyword in (exe, exe[:-4]) for x in a.mentions):
+            continue
+        before = neg_body[max(0, m.start() - 40) : m.start()]
+        clause = re.split(_CLAUSE_BREAK, neg_body[: m.start()])[-1]
+        a.mentions.append(Mention(f"{exe} execution", frozenset({"process.start"}), None, exe, False, m.start(),
+                                  bool(_NEGATION_RE.search(before) or _CLAUSE_NEGATION_RE.search(clause))))  # fmt: skip
     # "Every login attempt from X failed" is a universal claim: equivalent to "no successful login from X".
     for m in _UNIVERSAL_FAIL_RE.finditer(body):
         a.mentions = [

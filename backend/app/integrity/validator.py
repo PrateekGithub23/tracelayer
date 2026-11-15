@@ -197,6 +197,13 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
     checks["citations"] = {"given": len(raw), "resolved": len(resolved), "fabricated": fabricated,
                            "out_of_scope": out_of_scope}  # fmt: skip
 
+    # Size gate before any parsing: oversized input is rejected in O(1), so it cannot be used to burn CPU.
+    if len(claim.text) > MAX_CLAIM_CHARS:
+        return ClaimResult(claim.text[:MAX_CLAIM_CHARS], kind, raw, resolved, UNSUPPORTED,
+                           [f"Not an atomic claim ({len(claim.text)} characters): each statement must be short enough "
+                            "to verify on its own"],
+                           {**checks, "requires_review": True, "warnings": [],
+                            "stages": [{"stage": "0. size gate", "result": "rejected before parsing"}]})  # fmt: skip
     a = extract(claim.text, scope)
     checks["extracted"] = {
         "ips": sorted(a.ips), "users": sorted(a.users), "hosts": sorted(a.hosts),

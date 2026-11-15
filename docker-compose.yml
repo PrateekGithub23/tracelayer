@@ -1,49 +1,78 @@
 # TraceLayer local stack. Everything here is free and runs offline.
 #
-#   docker compose up --build             -> UI on http://localhost:8080, API on :8000
-#   docker compose --profile llm up       -> also runs Ollama in a container (CPU only on macOS;
-#                                            a native `brew install ollama` uses the GPU and is much faster)
+#   docker compose up --build -d          -> UI on http://localhost:8080 (API proxied at /api)
+#   docker compose --profile llm up -d    -> also runs Ollama in a container (CPU only on macOS; a native
+#                                            `brew install ollama` uses the Apple GPU and is much faster)
+#   make create-admin                     -> create the first administrator account
+#
+# Security posture (docs/SECURITY.md): only the UI port is published, on 127.0.0.1. PostgreSQL and Ollama are
+# never published. The API connects with a least-privilege role; migrations use the owner role. Containers run
+# as non-root with all Linux capabilities dropped and read-only root filesystems.
+x-hardening: &hardening
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16.16-alpine
     environment:
-      POSTGRES_USER: tracelayer
+      POSTGRES_USER: tracelayer                 # schema owner: used only by migrations
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tracelayer-local-only}
       POSTGRES_DB: tracelayer
-    volumes: [pgdata:/var/lib/postgresql/data]
+      TL_APP_PASSWORD: ${TL_APP_PASSWORD:-tracelayer-app-local-only}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/10-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tracelayer"]
       interval: 3s
       retries: 20
-    # Not published to the host: only the API container talks to the database.
+    security_opt: ["no-new-privileges:true"]
+    # Not published to the host: only the API container can reach the database.
 
   api:
     build: ./backend
+    <<: *hardening
+    read_only: true
+    tmpfs: ["/tmp"]
     depends_on:
       db: { condition: service_healthy }
     environment:
-      TRACELAYER_DATABASE_URL: postgresql+psycopg://tracelayer:${POSTGRES_PASSWORD:-tracelayer-local-only}@db:5432/tracelayer
-      TRACELAYER_API_TOKEN: ${TRACELAYER_API_TOKEN:-}
+      TRACELAYER_DATABASE_URL: postgresql+psycopg://tracelayer_app:${TL_APP_PASSWORD:-tracelayer-app-local-only}@db:5432/tracelayer
+      TRACELAYER_MIGRATION_DATABASE_URL: postgresql+psycopg://tracelayer:${POSTGRES_PASSWORD:-tracelayer-local-only}@db:5432/tracelayer
       TRACELAYER_LLM_MODE: ${TRACELAYER_LLM_MODE:-auto}
       # Native Ollama on the Mac host (GPU accelerated). With --profile llm use http://ollama:11434
       TRACELAYER_OLLAMA_URL: ${TRACELAYER_OLLAMA_URL:-http://host.docker.internal:11434}
       TRACELAYER_OLLAMA_MODEL: ${TRACELAYER_OLLAMA_MODEL:-llama3.2:3b}
-      TRACELAYER_CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
+      TRACELAYER_CORS_ORIGINS: '["http://localhost:8080"]'
+      TRACELAYER_TRUSTED_PROXIES: "1"          # nginx is the single trusted hop
+      TRACELAYER_DATA_DIR: /data
+      TRACELAYER_ENV: ${TRACELAYER_ENV:-development}
+      TRACELAYER_COOKIE_SECURE: ${TRACELAYER_COOKIE_SECURE:-false}
+      TRACELAYER_BOOTSTRAP_ADMIN_EMAIL: ${TRACELAYER_BOOTSTRAP_ADMIN_EMAIL:-}
+      TRACELAYER_BOOTSTRAP_ADMIN_PASSWORD: ${TRACELAYER_BOOTSTRAP_ADMIN_PASSWORD:-}
+    volumes: ["datasets:/data"]
     extra_hosts: ["host.docker.internal:host-gateway"]
-    ports: ["127.0.0.1:8000:8000"]
+    # Not published: the UI container proxies /api. (Uncomment for direct API debugging, localhost only.)
+    # ports: ["127.0.0.1:8000:8000"]
 
   web:
     build: ./frontend
+    <<: *hardening
+    read_only: true
+    tmpfs: ["/tmp"]
     depends_on:
       api: { condition: service_healthy }
     ports: ["127.0.0.1:8080:8080"]
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.16
     profiles: [llm]
     volumes: [ollama:/root/.ollama]
-    ports: ["127.0.0.1:11434:11434"]
+    security_opt: ["no-new-privileges:true"]
+    # Not published: only the API talks to it.
 
 volumes:
   pgdata:
   ollama:
+  datasets:

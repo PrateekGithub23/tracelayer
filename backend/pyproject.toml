@@ -60,4 +60,4 @@ plugins = ["pydantic.mypy"]
 [tool.ruff.lint.per-file-ignores]
 # The evaluation case table is intentionally one case per line, so it reads as a table.
 "app/evaluation/suite.py" = ["E501"]
-"tests/*" = ["E501", "S105", "S106"]
+"tests/*" = ["E501", "S105", "S106", "S603"]  # S603: tests run the repo's own verifier script

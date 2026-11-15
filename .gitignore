@@ -17,3 +17,5 @@ dist/
 frontend/test-results/
 frontend/playwright-report/
 backend/data/
+frontend/dist-demo/
+backups/

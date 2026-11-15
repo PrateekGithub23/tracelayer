@@ -181,7 +181,9 @@ function EventPanel({ id, onBack }: { id: string; onBack?: () => void }) {
 
       <section>
         <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-fg-faint"><FileJson className="h-3.5 w-3.5" /> Raw record (as received)</h3>
-        <pre className="max-h-72 overflow-auto rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-[11.5px] leading-relaxed text-fg-muted">{JSON.stringify(e.raw, null, 2)}</pre>
+        {(e as any).raw_omitted ? (
+          <p className="rounded-lg border border-ink-700 bg-ink-950 p-3 text-[12px] text-fg-faint">Omitted from the public demo to keep it small (this is a context event from a public dataset). The full application stores and shows every raw record; the content hash above was computed from it.</p>
+        ) : <pre className="max-h-72 overflow-auto rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-[11.5px] leading-relaxed text-fg-muted">{JSON.stringify(e.raw, null, 2)}</pre>}
       </section>
     </div>
   );

@@ -167,7 +167,7 @@ PROCESS_SIGNATURES: list[tuple[re.Pattern[str], str, str, str]] = [
     (re.compile(r"\bwhoami(\.exe)?\b.*/(priv|groups|all)", re.I), "Privilege discovery", "low", "T1033"),
     # v2 fix (found on OTRF real-world data): `net user ... /add` *creates* an account, which ATT&CK classifies as
     # T1136 Create Account, not T1098 Account Manipulation. Group membership changes remain T1098.
-    (re.compile(r"\bnet1?(\.exe)?\s+user\b.*/add\b", re.I), "Account creation via net.exe", "medium", "T1136.001"),
+    (re.compile(r"\bnet1?(\.exe)?\s+user\b.*/add\b", re.I), "Account creation (net user /add)", "medium", "T1136.001"),
     (re.compile(r"\bnet1?(\.exe)?\s+(user|group|localgroup)\b.*/(add|domain)", re.I), "Account manipulation",
      "medium", "T1098"),
     (re.compile(r"\bnc(at)?\b.*\s-e\s", re.I), "Reverse shell", "high", "T1059"),
