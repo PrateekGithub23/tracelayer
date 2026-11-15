@@ -11,6 +11,7 @@ from app import __version__, audit, jobs, telemetry
 from app.ai.service import effective_llm, ollama_client
 from app.api.deps import require
 from app.audit import verify_audit_chain
+from app.auth.rbac import has_permission
 from app.auth.sessions import Principal
 from app.cases import OPEN_STATUSES
 from app.config import get_settings
@@ -40,7 +41,7 @@ def health(db: Session = Depends(get_db)) -> dict[str, str]:
 
 
 @router.get("/system/status")
-def system_status(db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
+def system_status(db: Session = Depends(get_db), p: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
     s = get_settings()
     mode, model = effective_llm(db)
     llm = ollama_client(db).status() if mode != "deterministic" else {"reachable": False, "disabled": True}
@@ -48,7 +49,12 @@ def system_status(db: Session = Depends(get_db), _: Principal = Depends(require(
         "version": __version__,
         "database": db.get_bind().dialect.name,
         "auth_required": True,
-        "llm": {**llm, "mode": mode, "url": s.ollama_url, "configured_model": model},
+        "llm": {
+            **llm,
+            "mode": mode,
+            "configured_model": model,
+            "url": s.ollama_url if has_permission(p.user.role, "settings:manage") else None,
+        },
         "background_jobs": s.background_jobs,
     }
 

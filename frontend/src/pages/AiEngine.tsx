@@ -44,7 +44,7 @@ export default function AiEngine() {
           actions={can("settings:manage") && <Button size="sm" disabled={!ready || test.isPending} onClick={() => test.mutate()}><PlugZap className="h-3.5 w-3.5" />{test.isPending ? "Testing…" : "Run live test"}</Button>}>
           <dl>
             <KV k="Reachable" v={s.reachable ? <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />yes, Ollama {s.version}</span> : <span className="inline-flex items-center gap-1 text-amber-300"><XCircle className="h-3.5 w-3.5" />{s.error ?? "no"}</span>} />
-            <KV k="Endpoint" v={s.url} mono />
+            <KV k="Endpoint" v={s.url ?? "hidden (administrators only)"} mono={!!s.url} />
             <KV k="Configured model" v={s.configured_model} mono />
             <KV k="Installed" v={s.model_available ? `yes · ${s.parameter_size ?? "?"} · ${s.quantization ?? "?"}` : s.reachable ? `no; run: ollama pull ${s.configured_model}` : "unknown"} />
             <KV k="Digest" v={s.digest ? <span title={s.digest}>{String(s.digest).slice(0, 24)}…</span> : "—"} mono />

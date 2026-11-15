@@ -15,6 +15,7 @@ Run:  python -m app.demo.build_snapshot --out ../frontend/public/demo-data/snaps
 import argparse
 import json
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -83,7 +84,10 @@ def build(out: Path, otrf_file: str | None, use_llm: bool) -> dict[str, Any]:
             for engine in ("ollama", "grounded"):
                 r = c.post(f"/api/investigations/{main['id']}/analyses", json={"engine": engine})
                 llm = (r.json() if r.status_code == 200 else None) or llm
-                print(f"LLM analysis ({engine}):", "created" if r.status_code == 200 else f"not available ({r.status_code}: {r.text[:120]})")
+                print(
+                    f"LLM analysis ({engine}):",
+                    "created" if r.status_code == 200 else f"not available ({r.status_code}: {r.text[:120]})",
+                )
 
         # The lead triages and hands the case to the demo analyst; the deterministic draft gets reviewed.
         v = main["version"]
@@ -244,8 +248,14 @@ def scrub(snapshot: dict[str, Any]) -> dict[str, Any]:
     if me:
         me["csrf_token"] = "demo-transport-does-not-use-csrf"  # noqa: S105 - a placeholder that replaces a real token
 
+    internal_url = re.compile(
+        r"^https?://(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|host\.docker\.internal)"
+    )
+
     def walk(v: Any) -> tuple[Any, bool]:
         if isinstance(v, str):
+            if internal_url.match(v):  # e.g. the local Ollama endpoint: never part of a public artifact
+                return "(local service, not part of the public demo)", True
             out, changed = redact_credentials(v)
             return out, changed
         if isinstance(v, dict):

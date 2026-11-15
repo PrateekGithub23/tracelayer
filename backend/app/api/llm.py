@@ -12,6 +12,7 @@ from app import audit
 from app.ai.ollama import OllamaError
 from app.ai.service import _GENERATION_SLOT, effective_llm, ollama_client
 from app.api.deps import require
+from app.auth.rbac import has_permission
 from app.auth.sessions import Principal
 from app.config import get_settings
 from app.db import get_db
@@ -31,7 +32,7 @@ def _busy() -> bool:
 
 
 @router.get("/status")
-def llm_status(db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
+def llm_status(db: Session = Depends(get_db), p: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
     s = get_settings()
     mode, model = effective_llm(db)
     st = ollama_client(db).status() if mode != "deterministic" else {"reachable": False, "model_available": False,
@@ -46,7 +47,8 @@ def llm_status(db: Session = Depends(get_db), _: Principal = Depends(require("me
         **st,
         "mode": mode,
         "configured_model": model,
-        "url": s.ollama_url,
+        # Internal endpoint: only administrators need to see where the model server lives.
+        "url": s.ollama_url if has_permission(p.user.role, "settings:manage") else None,
         "timeout_s": s.ollama_timeout_s,
         "busy": _busy(),
         "usage": usage,

@@ -247,3 +247,11 @@ def test_activity_history_and_failed_login_visibility(admin_client: TestClient, 
     assert users[ANALYST]["failed_logins_24h"] == 1
     assert admin_client.get(f"/api/admin/users/{uid}/activity").json()[0]["action"] == "auth.login"
     assert anon_client.get("/api/auth/me").json()["session"]["idle_minutes"] == 480
+
+
+def test_internal_endpoints_hidden_from_non_admins(admin_client: TestClient, anon_client: TestClient) -> None:
+    make_user("viewer")
+    login(anon_client, "viewer@example.test", PASSWORDS["viewer"])
+    assert anon_client.get("/api/llm/status").json()["url"] is None
+    assert anon_client.get("/api/system/status").json()["llm"]["url"] is None
+    assert admin_client.get("/api/llm/status").json()["url"].startswith("http")

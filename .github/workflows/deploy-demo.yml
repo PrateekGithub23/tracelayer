@@ -1,31 +1,48 @@
 # Publishes the static, browser-only demo (frontend/dist-demo) to GitHub Pages.
-# Manual only: nothing is deployed until someone with write access runs this workflow.
-# The demo contains no backend, no credentials, and only recorded, scrubbed data (see docs/DEPLOYMENT.md).
+#
+#  * Manual only (workflow_dispatch): nothing is deployed until someone with write access runs it, and the
+#    github-pages environment can additionally require a reviewer (Settings -> Environments).
+#  * The exact artifact that is published is first tested: unit tests, then the Playwright demo suite against
+#    the build made for the Pages sub-path (asserting zero requests outside the demo's own files), then secret
+#    scans of the repository and of the built output.
+#  * Rollback: run this workflow again on an earlier commit (choose the ref in "Run workflow"); see docs/DEPLOYMENT.md.
 name: deploy-demo
 on: workflow_dispatch
 permissions: { contents: read }
 concurrency: { group: pages, cancel-in-progress: false }
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: "20", cache: npm, cache-dependency-path: frontend/package-lock.json }
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
         id: pages
-      - run: cd frontend && npm ci && npx playwright install --with-deps chromium
+      - name: install
+        run: cd frontend && npm ci && npx playwright install --with-deps chromium
+      - name: unit tests and type check
+        run: cd frontend && npm run typecheck && npm test
       - name: build for the Pages sub-path (https://<user>.github.io/<repo>/)
         run: cd frontend && VITE_BASE="${{ steps.pages.outputs.base_path }}/" VITE_REPO_URL="${{ github.server_url }}/${{ github.repository }}" npm run build:demo
-      - name: refuse to publish anything secret-looking
+      - name: end-to-end tests against the exact artifact (sub-path, zero private requests)
+        run: cd frontend && VITE_BASE="${{ steps.pages.outputs.base_path }}/" npx playwright test -c playwright.demo.config.ts
+      - name: secret scan (repository history + built output)
         run: |
-          ! grep -rEl "argon2id|password_hash|token_hash|BEGIN [A-Z ]*PRIVATE KEY|ghp_[A-Za-z0-9]{30}" frontend/dist-demo
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --config /repo/.gitleaks.toml /repo
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 dir --redact --config /repo/.gitleaks.toml /repo/frontend/dist-demo
+      - name: refuse to publish anything secret-looking or private
+        run: |
+          ! grep -rEl "argon2id|password_hash|token_hash|BEGIN [A-Z ]*PRIVATE KEY|ghp_[A-Za-z0-9]{30}|localhost:(8000|11434|5432)" frontend/dist-demo
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with: { path: frontend/dist-demo }
   deploy:
-    needs: build
+    needs: build-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions: { pages: write, id-token: write }
     environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
     steps:
