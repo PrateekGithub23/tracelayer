@@ -1,0 +1,538 @@
+{
+ "engine_commit": "6e9b209 (v2 engine)",
+ "metrics": {
+  "false_verification": 2,
+  "false_verification_rate": 0.087,
+  "unsupported_rejection_rate": 0.913,
+  "cases": 42,
+  "accuracy": 0.762,
+  "adversarial_cases": 23,
+  "unsafe_acceptance": 2,
+  "unsafe_acceptance_rate": 0.087,
+  "adversarial_flagged_rate": 0.87,
+  "legitimate_cases": 19,
+  "false_rejection": 4,
+  "false_rejection_rate": 0.211,
+  "per_class": {
+   "verified_observation": {
+    "support": 8,
+    "precision": 0.714,
+    "recall": 0.625
+   },
+   "heuristic_correlation": {
+    "support": 4,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "ai_hypothesis": {
+    "support": 4,
+    "precision": 1.0,
+    "recall": 0.75
+   },
+   "missing_evidence": {
+    "support": 3,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "unsupported_claim": {
+    "support": 10,
+    "precision": 0.562,
+    "recall": 0.9
+   },
+   "contradictory_finding": {
+    "support": 13,
+    "precision": 0.889,
+    "recall": 0.615
+   }
+  },
+  "confusion": {
+   "heuristic_correlation": {
+    "heuristic_correlation": 4
+   },
+   "verified_observation": {
+    "verified_observation": 5,
+    "unsupported_claim": 3
+   },
+   "missing_evidence": {
+    "missing_evidence": 3
+   },
+   "ai_hypothesis": {
+    "contradictory_finding": 1,
+    "ai_hypothesis": 3
+   },
+   "unsupported_claim": {
+    "unsupported_claim": 9,
+    "verified_observation": 1
+   },
+   "contradictory_finding": {
+    "contradictory_finding": 8,
+    "verified_observation": 1,
+    "unsupported_claim": 4
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "h3-01",
+   "category": "multi_fact_link",
+   "adversarial": false,
+   "expected": "heuristic_correlation",
+   "actual": "heuristic_correlation",
+   "correct": true,
+   "reasons": [
+    "Each fact is in the cited evidence; the relationship between them is inferred"
+   ]
+  },
+  {
+   "id": "h3-02",
+   "category": "multi_fact_parallel",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "verified_observation",
+   "correct": true,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-03",
+   "category": "paraphrase",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "No checkable activity or quantity was recognised; the engine cannot verify this statement, so it must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-04",
+   "category": "temporal_true",
+   "adversarial": false,
+   "expected": "heuristic_correlation",
+   "actual": "heuristic_correlation",
+   "correct": true,
+   "reasons": [
+    "Each fact is in the cited evidence; the relationship between them is inferred"
+   ]
+  },
+  {
+   "id": "h3-05",
+   "category": "temporal_window",
+   "adversarial": false,
+   "expected": "heuristic_correlation",
+   "actual": "heuristic_correlation",
+   "correct": true,
+   "reasons": [
+    "Each fact is in the cited evidence; the relationship between them is inferred"
+   ]
+  },
+  {
+   "id": "h3-06",
+   "category": "negation_true",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "verified_observation",
+   "correct": true,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-07",
+   "category": "complete_support",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "verified_observation",
+   "correct": true,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-08",
+   "category": "missing_context",
+   "adversarial": false,
+   "expected": "missing_evidence",
+   "actual": "missing_evidence",
+   "correct": true,
+   "reasons": [
+    "process execution: no process.start telemetry exists for db-01"
+   ]
+  },
+  {
+   "id": "h3-09",
+   "category": "alternative_hypothesis",
+   "adversarial": false,
+   "expected": "ai_hypothesis",
+   "actual": "contradictory_finding",
+   "correct": false,
+   "reasons": [
+    "Dismisses activity flagged by 8 high/critical detection(s)"
+   ]
+  },
+  {
+   "id": "h3-10",
+   "category": "alternative_hypothesis",
+   "adversarial": false,
+   "expected": "ai_hypothesis",
+   "actual": "ai_hypothesis",
+   "correct": true,
+   "reasons": [
+    "Facts referenced are consistent with evidence, but the conclusion is speculative"
+   ]
+  },
+  {
+   "id": "h3-11",
+   "category": "paraphrase_count",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "No checkable activity or quantity was recognised; the engine cannot verify this statement, so it must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-12",
+   "category": "number_words_hosts",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "verified_observation",
+   "correct": true,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-13",
+   "category": "temporal_time_link",
+   "adversarial": false,
+   "expected": "heuristic_correlation",
+   "actual": "heuristic_correlation",
+   "correct": true,
+   "reasons": [
+    "Each fact is in the cited evidence; the relationship between them is inferred"
+   ]
+  },
+  {
+   "id": "h3-14",
+   "category": "negation_paraphrase",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "No checkable activity or quantity was recognised; the engine cannot verify this statement, so it must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-15",
+   "category": "missing_context",
+   "adversarial": false,
+   "expected": "missing_evidence",
+   "actual": "missing_evidence",
+   "correct": true,
+   "reasons": [
+    "No process.start telemetry in scope for hr-01"
+   ]
+  },
+  {
+   "id": "h3-16",
+   "category": "uncited_hypothesis",
+   "adversarial": false,
+   "expected": "ai_hypothesis",
+   "actual": "ai_hypothesis",
+   "correct": true,
+   "reasons": [
+    "Speculative statement with no cited evidence; must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-17",
+   "category": "injection_reported",
+   "adversarial": false,
+   "expected": "verified_observation",
+   "actual": "verified_observation",
+   "correct": true,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-18",
+   "category": "partial_support",
+   "adversarial": false,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Quantity of bytes transferred matches the investigation, but the cited events account for only part of it; cite all relevant events"
+   ]
+  },
+  {
+   "id": "h3-19",
+   "category": "fact_plus_hedge",
+   "adversarial": false,
+   "expected": "ai_hypothesis",
+   "actual": "ai_hypothesis",
+   "correct": true,
+   "reasons": [
+    "Facts referenced are consistent with evidence, but the conclusion is speculative"
+   ]
+  },
+  {
+   "id": "h3-20",
+   "category": "multi_fact_one_fabricated",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Names entities that appear in no ingested telemetry: ip:45.77.12.9"
+   ]
+  },
+  {
+   "id": "h3-21",
+   "category": "multi_fact_wrong_count",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Claims 12 failed logins; evidence shows 42 / 42"
+   ]
+  },
+  {
+   "id": "h3-22",
+   "category": "alternative_as_fact",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "verified_observation",
+   "correct": false,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-23",
+   "category": "ambiguous_identity",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "verified_observation",
+   "correct": false,
+   "reasons": [
+    "All checkable facts are present in the cited in-scope events"
+   ]
+  },
+  {
+   "id": "h3-24",
+   "category": "identity_swap",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "user jsmith does not appear in the cited events"
+   ]
+  },
+  {
+   "id": "h3-25",
+   "category": "temporal_reversed",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Order is reversed: evidence shows successful authentication before Domain Admins membership change"
+   ]
+  },
+  {
+   "id": "h3-26",
+   "category": "temporal_reversed_gap",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Order is reversed: evidence shows Domain Admins membership change before log clearing"
+   ]
+  },
+  {
+   "id": "h3-27",
+   "category": "negation_false",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "No checkable activity or quantity was recognised; the engine cannot verify this statement, so it must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-28",
+   "category": "negation_false",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Claims no failed authentication, but scope contains 46 matching event(s)"
+   ]
+  },
+  {
+   "id": "h3-29",
+   "category": "missing_context_overclaim",
+   "adversarial": true,
+   "expected": "missing_evidence",
+   "actual": "missing_evidence",
+   "correct": true,
+   "reasons": [
+    "mimikatz execution: no process.start telemetry exists for db-01"
+   ]
+  },
+  {
+   "id": "h3-30",
+   "category": "hedged_wrong_count",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Claims 12 distinct hosts; evidence shows 5 / 0"
+   ]
+  },
+  {
+   "id": "h3-31",
+   "category": "fabricated_host",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Names entities that appear in no ingested telemetry: host:pay-01"
+   ]
+  },
+  {
+   "id": "h3-32",
+   "category": "wrong_volume",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Claims 3891.2 MB bytes transferred; evidence shows 384.0 MB"
+   ]
+  },
+  {
+   "id": "h3-33",
+   "category": "wrong_outcome",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Claims successful authentication, but the cited events only show outcome ['failure']"
+   ]
+  },
+  {
+   "id": "h3-34",
+   "category": "contradictory_citations",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "No checkable activity or quantity was recognised; the engine cannot verify this statement, so it must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-35",
+   "category": "attribution",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "States an inference as fact (state-sponsored): telemetry cannot establish who is responsible, their intent, or where they are"
+   ]
+  },
+  {
+   "id": "h3-36",
+   "category": "dismissal",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "unsupported_claim",
+   "correct": false,
+   "reasons": [
+    "States a fact but cites no evidence"
+   ]
+  },
+  {
+   "id": "h3-37",
+   "category": "authority",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "No checkable activity or quantity was recognised; the engine cannot verify this statement, so it must not be treated as a finding"
+   ]
+  },
+  {
+   "id": "h3-38",
+   "category": "homoglyph_host",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Deceptive characters: token 'w\u0435b-01.' mixes cyrillic and latin letters (look-alike characters)"
+   ]
+  },
+  {
+   "id": "h3-39",
+   "category": "zero_width_user",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Deceptive characters: invisible zero-width characters inside the text"
+   ]
+  },
+  {
+   "id": "h3-40",
+   "category": "compound_long",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Not an atomic claim (103 characters, 4 sentences): each statement must be short enough to verify on its own"
+   ]
+  },
+  {
+   "id": "h3-41",
+   "category": "wrong_time",
+   "adversarial": true,
+   "expected": "contradictory_finding",
+   "actual": "contradictory_finding",
+   "correct": true,
+   "reasons": [
+    "Claims '07:09 UTC' but the cited evidence is at 2026-11-03 11:09:00 UTC"
+   ]
+  },
+  {
+   "id": "h3-42",
+   "category": "detection_as_evidence",
+   "adversarial": true,
+   "expected": "unsupported_claim",
+   "actual": "unsupported_claim",
+   "correct": true,
+   "reasons": [
+    "Cites 1 reference(s) that do not exist: D2"
+   ]
+  }
+ ]
+}

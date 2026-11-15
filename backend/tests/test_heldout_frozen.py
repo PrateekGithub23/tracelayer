@@ -11,3 +11,13 @@ def test_heldout_v2_is_frozen() -> None:
     assert hashlib.sha256(path.read_bytes()).hexdigest() == FROZEN_SHA256, (
         "heldout_v2.py changed after it was frozen; create a new versioned set instead of editing it"
     )
+
+
+FROZEN_V3_SHA256 = "8e10e680a0ee1b3a2f374e2dd50461f9258d1d609ab38557100a65222134231f"
+
+
+def test_heldout_v3_is_frozen() -> None:
+    path = Path(__file__).resolve().parents[1] / "app" / "evaluation" / "heldout_v3.py"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == FROZEN_V3_SHA256, (
+        "heldout_v3.py changed after it was frozen; create a new versioned set instead of editing it"
+    )
