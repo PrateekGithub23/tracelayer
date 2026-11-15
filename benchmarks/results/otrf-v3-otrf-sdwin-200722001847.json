@@ -1,0 +1,153 @@
+{
+  "id": "dsi_2e5b8ec7e9dc7ad8",
+  "status": "succeeded",
+  "error": null,
+  "records": 657,
+  "accepted": 657,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 348.7,
+  "results": {
+    "events": 657,
+    "event_types": {
+      "auth.context": 4,
+      "auth.login": 4,
+      "auth.logoff": 5,
+      "auth.privileges": 2,
+      "disk.raw_access": 2,
+      "file.access": 2,
+      "ipc.pipe": 4,
+      "module.load": 10,
+      "network.flow": 243,
+      "network.listen": 35,
+      "object.access": 138,
+      "other": 5,
+      "process.access": 30,
+      "process.end": 6,
+      "registry.change": 32,
+      "script.exec": 135
+    },
+    "unmapped_share": 0.0076,
+    "top_unmapped": [
+      {
+        "source": "Security 4661",
+        "count": 4
+      },
+      {
+        "source": "Security 5140",
+        "count": 1
+      }
+    ],
+    "credential_redactions": 0,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 657
+    },
+    "techniques_labelled": [
+      "T1547"
+    ],
+    "techniques_detected": [
+      "T1547"
+    ],
+    "technique_recall": 1.0,
+    "techniques_missed": [],
+    "alerts": [
+      {
+        "id": "det_c77dc9b69da6523bc502",
+        "rule_id": "TL-PERS-002",
+        "rule_name": "Registry Run key persistence",
+        "technique": "T1547.001",
+        "tactic": "persistence",
+        "severity": "high",
+        "evidence_count": 1,
+        "summary": "powershell.exe on workstation5 set autostart value 'Updater'",
+        "first_seen": "2020-07-22T04:19:05.132000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200722001847"
+        ],
+        "matches_label": true
+      }
+    ],
+    "alert_count": 1,
+    "alerts_matching_labels": 1,
+    "correlations": [
+      {
+        "investigation_id": "inv_ed6dac75473e57fe",
+        "title": "Registry Run key persistence involving unknown on workstation5",
+        "severity": "high",
+        "sources": {
+          "dataset:otrf-sdwin-200722001847": 349
+        },
+        "cross_source": false
+      }
+    ],
+    "cross_source_correlations": 0,
+    "coverage": {
+      "total_events": 657,
+      "rejected_records": 0,
+      "statuses": {
+        "full": 652,
+        "partial": 0,
+        "raw_only": 5,
+        "typed_unassessed": 0
+      },
+      "percent": {
+        "full": 99.24,
+        "partial": 0.0,
+        "raw_only": 0.76,
+        "typed_unassessed": 0.0
+      },
+      "event_types": {
+        "network.flow": 243,
+        "object.access": 138,
+        "script.exec": 135,
+        "network.listen": 35,
+        "registry.change": 32,
+        "process.access": 30,
+        "module.load": 10,
+        "process.end": 6,
+        "other": 5,
+        "auth.logoff": 5,
+        "auth.login": 4,
+        "auth.context": 4,
+        "ipc.pipe": 4,
+        "disk.raw_access": 2,
+        "auth.privileges": 2,
+        "file.access": 2
+      },
+      "fields_missing": [],
+      "reasons": [
+        {
+          "reason": "no v3 mapping for Security event 4661",
+          "count": 4
+        },
+        {
+          "reason": "no v3 mapping for Security event 5140",
+          "count": 1
+        }
+      ],
+      "unsupported_source_types": [
+        {
+          "source_type": "Security 4661",
+          "count": 4
+        },
+        {
+          "source_type": "Security 5140",
+          "count": 1
+        }
+      ]
+    },
+    "parser": "otrf_windows.v3",
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 294.9,
+      "detect_and_correlate": 24.6,
+      "events_per_sec": 2228.0
+    },
+    "pipeline": {
+      "detections_created": 1,
+      "investigations_created": 1
+    }
+  }
+}

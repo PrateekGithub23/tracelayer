@@ -1,0 +1,367 @@
+{
+  "id": "dsi_93153e032e038fa9",
+  "status": "succeeded",
+  "error": null,
+  "records": 6383,
+  "accepted": 6383,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 2176.1,
+  "results": {
+    "events": 6383,
+    "event_types": {
+      "auth.context": 31,
+      "auth.login": 31,
+      "auth.logoff": 29,
+      "auth.privileges": 177,
+      "disk.raw_access": 4,
+      "dns.query": 1,
+      "file.access": 11,
+      "ipc.pipe": 6,
+      "module.load": 259,
+      "network.flow": 76,
+      "network.listen": 89,
+      "object.access": 2957,
+      "other": 45,
+      "process.access": 829,
+      "process.end": 13,
+      "process.start": 12,
+      "registry.change": 737,
+      "script.exec": 1071,
+      "wmi.activity": 5
+    },
+    "unmapped_share": 0.007,
+    "top_unmapped": [
+      {
+        "source": "Windows PowerShell 600",
+        "count": 14
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 23",
+        "count": 4
+      },
+      {
+        "source": "Security 5058",
+        "count": 4
+      },
+      {
+        "source": "Security 5061",
+        "count": 4
+      },
+      {
+        "source": "Security 4769",
+        "count": 2
+      },
+      {
+        "source": "Windows PowerShell 400",
+        "count": 2
+      },
+      {
+        "source": "Microsoft-Windows-PowerShell/Operational 53504",
+        "count": 2
+      },
+      {
+        "source": "System 10",
+        "count": 2
+      },
+      {
+        "source": "System 11",
+        "count": 2
+      },
+      {
+        "source": "System 7040",
+        "count": 2
+      },
+      {
+        "source": "Security 4702",
+        "count": 1
+      },
+      {
+        "source": "Security 5140",
+        "count": 1
+      },
+      {
+        "source": "security 4670",
+        "count": 1
+      },
+      {
+        "source": "Microsoft-Windows-PowerShell/Operational 40961",
+        "count": 1
+      },
+      {
+        "source": "Microsoft-Windows-PowerShell/Operational 40962",
+        "count": 1
+      }
+    ],
+    "credential_redactions": 0,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 6383
+    },
+    "techniques_labelled": [
+      "T1047"
+    ],
+    "techniques_detected": [
+      "T1047"
+    ],
+    "technique_recall": 1.0,
+    "techniques_missed": [],
+    "alerts": [
+      {
+        "id": "det_286355fda2eb620f0660",
+        "rule_id": "TL-EXEC-002",
+        "rule_name": "Process execution through WMI",
+        "technique": "T1047",
+        "tactic": "execution",
+        "severity": "high",
+        "evidence_count": 2,
+        "summary": "Process execution through WMI on workstation6: WmiPrvSE spawned powershell.exe (2 event(s), user pgustavo, workstation6$)",
+        "first_seen": "2020-09-21T04:14:55.050000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200921001437"
+        ],
+        "matches_label": true
+      },
+      {
+        "id": "det_4e848302750f48ab5d77",
+        "rule_id": "TL-EXEC-001",
+        "rule_name": "Suspicious command execution: Encoded PowerShell",
+        "technique": "T1059.001",
+        "tactic": "execution",
+        "severity": "high",
+        "evidence_count": 2,
+        "summary": "Encoded PowerShell on workstation6 (2 executions by pgustavo, workstation6$)",
+        "first_seen": "2020-09-21T04:14:55.050000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200921001437"
+        ],
+        "matches_label": false
+      }
+    ],
+    "alert_count": 2,
+    "alerts_matching_labels": 1,
+    "correlations": [
+      {
+        "investigation_id": "inv_00a4be421ff8eb93",
+        "title": "Suspicious command execution: Encoded PowerShell involving pgustavo on workstation6",
+        "severity": "high",
+        "sources": {
+          "dataset:otrf-sdwin-200921001437": 1502
+        },
+        "cross_source": false
+      }
+    ],
+    "cross_source_correlations": 0,
+    "coverage": {
+      "total_events": 6383,
+      "rejected_records": 0,
+      "statuses": {
+        "full": 6239,
+        "partial": 99,
+        "raw_only": 45,
+        "typed_unassessed": 0
+      },
+      "percent": {
+        "full": 97.74,
+        "partial": 1.55,
+        "raw_only": 0.7,
+        "typed_unassessed": 0.0
+      },
+      "event_types": {
+        "object.access": 2957,
+        "script.exec": 1071,
+        "process.access": 829,
+        "registry.change": 737,
+        "module.load": 259,
+        "auth.privileges": 177,
+        "network.listen": 89,
+        "network.flow": 76,
+        "other": 45,
+        "auth.login": 31,
+        "auth.context": 31,
+        "auth.logoff": 29,
+        "process.end": 13,
+        "process.start": 12,
+        "file.access": 11,
+        "ipc.pipe": 6,
+        "wmi.activity": 5,
+        "disk.raw_access": 4,
+        "dns.query": 1
+      },
+      "fields_missing": [
+        {
+          "field": "script.exec.host_application",
+          "count": 94
+        },
+        {
+          "field": "script.exec.username",
+          "count": 94
+        },
+        {
+          "field": "wmi.activity.process",
+          "count": 5
+        }
+      ],
+      "reasons": [
+        {
+          "reason": "source event lacked: host_application, username",
+          "count": 94
+        },
+        {
+          "reason": "no v3 mapping for Windows PowerShell event 600",
+          "count": 14
+        },
+        {
+          "reason": "source event lacked: process",
+          "count": 5
+        },
+        {
+          "reason": "no v3 mapping for Microsoft-Windows-Sysmon/Operational event 23",
+          "count": 4
+        },
+        {
+          "reason": "no v3 mapping for Security event 5058",
+          "count": 4
+        },
+        {
+          "reason": "no v3 mapping for Security event 5061",
+          "count": 4
+        },
+        {
+          "reason": "no v3 mapping for Security event 4769",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for Windows PowerShell event 400",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for Microsoft-Windows-PowerShell/Operational event 53504",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for System event 10",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for System event 11",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for System event 7040",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for Security event 4702",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Security event 5140",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for security event 4670",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Microsoft-Windows-PowerShell/Operational event 40961",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Microsoft-Windows-PowerShell/Operational event 40962",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Security event 4670",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Microsoft-Windows-TaskScheduler/Operational event 129",
+          "count": 1
+        }
+      ],
+      "unsupported_source_types": [
+        {
+          "source_type": "Windows PowerShell 600",
+          "count": 14
+        },
+        {
+          "source_type": "Microsoft-Windows-Sysmon/Operational 23",
+          "count": 4
+        },
+        {
+          "source_type": "Security 5058",
+          "count": 4
+        },
+        {
+          "source_type": "Security 5061",
+          "count": 4
+        },
+        {
+          "source_type": "Security 4769",
+          "count": 2
+        },
+        {
+          "source_type": "Windows PowerShell 400",
+          "count": 2
+        },
+        {
+          "source_type": "Microsoft-Windows-PowerShell/Operational 53504",
+          "count": 2
+        },
+        {
+          "source_type": "System 10",
+          "count": 2
+        },
+        {
+          "source_type": "System 11",
+          "count": 2
+        },
+        {
+          "source_type": "System 7040",
+          "count": 2
+        },
+        {
+          "source_type": "Security 4702",
+          "count": 1
+        },
+        {
+          "source_type": "Security 5140",
+          "count": 1
+        },
+        {
+          "source_type": "security 4670",
+          "count": 1
+        },
+        {
+          "source_type": "Microsoft-Windows-PowerShell/Operational 40961",
+          "count": 1
+        },
+        {
+          "source_type": "Microsoft-Windows-PowerShell/Operational 40962",
+          "count": 1
+        },
+        {
+          "source_type": "Security 4670",
+          "count": 1
+        },
+        {
+          "source_type": "Microsoft-Windows-TaskScheduler/Operational 129",
+          "count": 1
+        }
+      ]
+    },
+    "parser": "otrf_windows.v3",
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 1838.5,
+      "detect_and_correlate": 57.5,
+      "events_per_sec": 3471.9
+    },
+    "pipeline": {
+      "detections_created": 2,
+      "investigations_created": 1
+    }
+  }
+}

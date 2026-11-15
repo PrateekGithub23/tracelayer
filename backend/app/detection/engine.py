@@ -60,6 +60,26 @@ def persist_candidates(db: Session, candidates: list[Candidate], run_id: str | N
         return {"created": 0, "updated": 0}
     ids = {c.dedup_key: content_id("det", c.dedup_key) for c in candidates}
     existing = {d.id: d for d in db.scalars(select(Detection).where(Detection.id.in_(list(ids.values()))))}
+    # Late-arriving events can move a burst's start into an earlier time bucket, which yields a new dedup key
+    # for activity that is already a detection. Re-key such candidates onto the existing detection of the same
+    # rule that already holds any of their evidence, so the analyst sees one alert that grows, not duplicates.
+    all_eids = list({e for c in candidates for e in c.event_ids})
+    owner: dict[tuple[str, str], str] = {}
+    for i in range(0, len(all_eids), 900):
+        for det_id, eid, rule_id in db.execute(
+            select(DetectionEvent.detection_id, DetectionEvent.event_id, Detection.rule_id)
+            .join(Detection, Detection.id == DetectionEvent.detection_id)
+            .where(DetectionEvent.event_id.in_(all_eids[i : i + 900]))
+        ):  # fmt: skip
+            owner.setdefault((rule_id, eid), det_id)
+    for c in candidates:
+        if ids[c.dedup_key] in existing:
+            continue
+        prior = next((owner[(c.rule_id, e)] for e in c.event_ids if (c.rule_id, e) in owner), None)
+        if prior:
+            ids[c.dedup_key] = prior
+    missing = [d for d in set(ids.values()) if d not in existing]
+    existing.update({d.id: d for d in db.scalars(select(Detection).where(Detection.id.in_(missing)))})
 
     links: list[dict[str, str]] = []
     for c in candidates:
@@ -80,6 +100,7 @@ def persist_candidates(db: Session, candidates: list[Candidate], run_id: str | N
             fresh = [e for e in c.event_ids if e not in known]
             if not fresh:
                 continue
+            det.first_seen = min(det.first_seen, c.first_seen)
             det.last_seen = max(det.last_seen, c.last_seen)
             det.evidence_count = len(known) + len(fresh)
             det.summary = c.summary

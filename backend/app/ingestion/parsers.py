@@ -84,6 +84,11 @@ class NormalizedEvent:
 # --------------------------------------------------------------------------- field helpers
 
 
+# Control characters except TAB. str.translate does the same filtering as the original per-character
+# generator but in C; output is byte-identical, so events normalised by older parsers still verify.
+_CONTROL_CHARS = {c: None for c in range(32) if c != 9}
+
+
 def _clean_str(value: Any, limit: int = MAX_STR) -> str | None:
     if value is None:
         return None
@@ -91,7 +96,7 @@ def _clean_str(value: Any, limit: int = MAX_STR) -> str | None:
     if not s or s in {"-", "N/A"}:
         return None
     # Strip control characters (log forging / terminal escape injection) but keep the text.
-    s = "".join(ch for ch in s if ch == "\t" or ord(ch) >= 32)
+    s = s.translate(_CONTROL_CHARS)
     return s[:limit]
 
 

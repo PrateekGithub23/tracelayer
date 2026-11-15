@@ -1,0 +1,131 @@
+{
+  "id": "dsi_fce175c171d84073",
+  "status": "succeeded",
+  "error": null,
+  "records": 884,
+  "accepted": 884,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 408.1,
+  "results": {
+    "events": 884,
+    "event_types": {
+      "auth.context": 5,
+      "auth.login": 5,
+      "auth.logoff": 4,
+      "auth.privileges": 101,
+      "disk.raw_access": 6,
+      "file.access": 4,
+      "ipc.pipe": 3,
+      "module.load": 35,
+      "network.flow": 28,
+      "network.listen": 34,
+      "object.access": 47,
+      "other": 3,
+      "process.access": 400,
+      "process.end": 4,
+      "process.start": 4,
+      "registry.change": 28,
+      "script.exec": 126,
+      "wmi.activity": 47
+    },
+    "unmapped_share": 0.0034,
+    "top_unmapped": [
+      {
+        "source": "Security 5140",
+        "count": 2
+      },
+      {
+        "source": "security 4799",
+        "count": 1
+      }
+    ],
+    "credential_redactions": 0,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 884
+    },
+    "techniques_labelled": [
+      "T1069"
+    ],
+    "techniques_detected": [],
+    "technique_recall": 0.0,
+    "techniques_missed": [
+      "T1069"
+    ],
+    "alerts": [],
+    "alert_count": 0,
+    "alerts_matching_labels": 0,
+    "correlations": [],
+    "cross_source_correlations": 0,
+    "coverage": {
+      "total_events": 884,
+      "rejected_records": 0,
+      "statuses": {
+        "full": 881,
+        "partial": 0,
+        "raw_only": 3,
+        "typed_unassessed": 0
+      },
+      "percent": {
+        "full": 99.66,
+        "partial": 0.0,
+        "raw_only": 0.34,
+        "typed_unassessed": 0.0
+      },
+      "event_types": {
+        "process.access": 400,
+        "script.exec": 126,
+        "auth.privileges": 101,
+        "object.access": 47,
+        "wmi.activity": 47,
+        "module.load": 35,
+        "network.listen": 34,
+        "registry.change": 28,
+        "network.flow": 28,
+        "disk.raw_access": 6,
+        "auth.login": 5,
+        "auth.context": 5,
+        "auth.logoff": 4,
+        "process.start": 4,
+        "process.end": 4,
+        "file.access": 4,
+        "ipc.pipe": 3,
+        "other": 3
+      },
+      "fields_missing": [],
+      "reasons": [
+        {
+          "reason": "no v3 mapping for Security event 5140",
+          "count": 2
+        },
+        {
+          "reason": "no v3 mapping for security event 4799",
+          "count": 1
+        }
+      ],
+      "unsupported_source_types": [
+        {
+          "source_type": "Security 5140",
+          "count": 2
+        },
+        {
+          "source_type": "security 4799",
+          "count": 1
+        }
+      ]
+    },
+    "parser": "otrf_windows.v3",
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 335.7,
+      "detect_and_correlate": 14.4,
+      "events_per_sec": 2633.0
+    },
+    "pipeline": {
+      "detections_created": 0,
+      "investigations_created": 0
+    }
+  }
+}

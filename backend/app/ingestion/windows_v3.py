@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.ingestion.parsers import (
+    INJECTION_PATTERNS,
     MAX_CMD,
     NormalizedEvent,
     ParseError,
@@ -30,7 +31,6 @@ from app.ingestion.parsers import (
     _short_host,
     _split_user,
     redact_credentials,
-    scan_for_injection,
 )
 
 SCHEMA = "tl-event/3"
@@ -498,5 +498,18 @@ class OtrfWindowsV3Parser:
         ev.command_line, redacted = redact_credentials(ev.command_line)
         if redacted:
             ev.tags.append("credential_redacted")
-        scan_for_injection(ev)
+        _scan_for_injection(ev)
         return ev
+
+
+def _scan_for_injection(ev: NormalizedEvent) -> None:
+    """Same patterns as v1/v2, applied once to each *distinct* text value. v3 copies long command lines into
+    several fields (command_line, host_application, ...), and scanning each copy cost ~2x for no coverage gain."""
+    texts: dict[str, None] = {}
+    for v in (ev.command_line, ev.message, ev.username, ev.process, *ev.attributes.values()):
+        if isinstance(v, str) and v:
+            texts[v] = None
+        elif isinstance(v, list):
+            texts.update({str(x): None for x in v if x})
+    if any(p.search(t) for t in texts for p in INJECTION_PATTERNS) and "llm_injection_suspected" not in ev.tags:
+        ev.tags.append("llm_injection_suspected")

@@ -1,0 +1,192 @@
+{
+  "id": "dsi_a634cf57d2ed24e4",
+  "status": "succeeded",
+  "error": null,
+  "records": 6026,
+  "accepted": 6026,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 7364.5,
+  "results": {
+    "events": 6026,
+    "event_types": {
+      "auth.context": 10,
+      "auth.login": 10,
+      "auth.logoff": 10,
+      "auth.privileges": 29,
+      "disk.raw_access": 3,
+      "dns.query": 1,
+      "file.access": 14,
+      "ipc.pipe": 7,
+      "module.load": 81,
+      "network.flow": 301,
+      "network.listen": 195,
+      "object.access": 223,
+      "other": 11,
+      "process.access": 272,
+      "process.end": 22,
+      "process.start": 2,
+      "registry.change": 199,
+      "script.exec": 4635,
+      "wmi.activity": 1
+    },
+    "unmapped_share": 0.0018,
+    "top_unmapped": [
+      {
+        "source": "Windows PowerShell 600",
+        "count": 8
+      },
+      {
+        "source": "Windows PowerShell 400",
+        "count": 1
+      },
+      {
+        "source": "Security 5140",
+        "count": 1
+      },
+      {
+        "source": "Security 4670",
+        "count": 1
+      }
+    ],
+    "credential_redactions": 0,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 6026
+    },
+    "techniques_labelled": [
+      "T1003"
+    ],
+    "techniques_detected": [
+      "T1003"
+    ],
+    "technique_recall": 1.0,
+    "techniques_missed": [],
+    "alerts": [
+      {
+        "id": "det_df79c053703b1f477347",
+        "rule_id": "TL-CRED-001",
+        "rule_name": "LSASS memory access",
+        "technique": "T1003.001",
+        "tactic": "credential-access",
+        "severity": "critical",
+        "evidence_count": 1,
+        "summary": "powershell.exe on workstation5 opened lsass.exe with access 0x1010 (1 time(s))",
+        "first_seen": "2020-08-07T14:32:57.589000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-190518202151"
+        ],
+        "matches_label": true
+      }
+    ],
+    "alert_count": 1,
+    "alerts_matching_labels": 1,
+    "correlations": [
+      {
+        "investigation_id": "inv_4b7b5da6fed490c6",
+        "title": "LSASS memory access involving unknown on workstation5",
+        "severity": "critical",
+        "sources": {
+          "dataset:otrf-sdwin-190518202151": 1501
+        },
+        "cross_source": false
+      }
+    ],
+    "cross_source_correlations": 0,
+    "coverage": {
+      "total_events": 6026,
+      "rejected_records": 0,
+      "statuses": {
+        "full": 6014,
+        "partial": 1,
+        "raw_only": 11,
+        "typed_unassessed": 0
+      },
+      "percent": {
+        "full": 99.8,
+        "partial": 0.02,
+        "raw_only": 0.18,
+        "typed_unassessed": 0.0
+      },
+      "event_types": {
+        "script.exec": 4635,
+        "network.flow": 301,
+        "process.access": 272,
+        "object.access": 223,
+        "registry.change": 199,
+        "network.listen": 195,
+        "module.load": 81,
+        "auth.privileges": 29,
+        "process.end": 22,
+        "file.access": 14,
+        "other": 11,
+        "auth.login": 10,
+        "auth.context": 10,
+        "auth.logoff": 10,
+        "ipc.pipe": 7,
+        "disk.raw_access": 3,
+        "process.start": 2,
+        "wmi.activity": 1,
+        "dns.query": 1
+      },
+      "fields_missing": [
+        {
+          "field": "wmi.activity.process",
+          "count": 1
+        }
+      ],
+      "reasons": [
+        {
+          "reason": "no v3 mapping for Windows PowerShell event 600",
+          "count": 8
+        },
+        {
+          "reason": "no v3 mapping for Windows PowerShell event 400",
+          "count": 1
+        },
+        {
+          "reason": "source event lacked: process",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Security event 5140",
+          "count": 1
+        },
+        {
+          "reason": "no v3 mapping for Security event 4670",
+          "count": 1
+        }
+      ],
+      "unsupported_source_types": [
+        {
+          "source_type": "Windows PowerShell 600",
+          "count": 8
+        },
+        {
+          "source_type": "Windows PowerShell 400",
+          "count": 1
+        },
+        {
+          "source_type": "Security 5140",
+          "count": 1
+        },
+        {
+          "source_type": "Security 4670",
+          "count": 1
+        }
+      ]
+    },
+    "parser": "otrf_windows.v3",
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 7000.5,
+      "detect_and_correlate": 41.8,
+      "events_per_sec": 860.8
+    },
+    "pipeline": {
+      "detections_created": 1,
+      "investigations_created": 1
+    }
+  }
+}
