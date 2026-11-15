@@ -1,0 +1,218 @@
+# Feature guide: what was built, how, why, and how to talk about it
+
+For each major feature, this guide covers: **what** was implemented · **files** · **how** it works · **why** this design · **testing** · **risks** (security and performance) · **interview** (how to explain it).
+
+---
+
+## 1. Ingestion and provenance
+
+**What.** Three parsers (TraceLayer JSON, OpenSSH syslog, Windows Security JSON) normalise records into one schema. Each batch is deduplicated, hashed into a Merkle root, and appended to a hash-chained ledger.
+
+**Files.** `backend/app/ingestion/parsers.py`, `ingestion/pipeline.py`, `integrity/provenance.py`, `integrity/ledger.py`, `db_utils.py`, `api/ingest.py`.
+
+**How.**
+- `to_raw()` captures exactly what is stored. For syslog that includes the year, which isn't in the line, so re-parsing stays deterministic.
+- The hash is `SHA-256(source + "\n" + canonical_json(raw))`, and the event id is `evt_` + the first 20 hex characters of that hash.
+- Duplicates are dropped within the batch, then against the database (inside the ledger lock), and `ON CONFLICT DO NOTHING` is the final net.
+- The batch stores a Merkle root over its new hashes and `chain_hash = H(prev ‖ seq ‖ id ‖ source ‖ parser ‖ merkle ‖ count ‖ time)`.
+- Verification re-hashes every raw record, **re-runs the parser** and compares 15 derived fields, then rebuilds every root and the full chain.
+
+**Why.**
+- One content hash gives dedup, idempotent re-ingest, and tamper evidence.
+- Pure parsers are what make "were the normalised fields edited?" checkable.
+- A Merkle root plus a chain is the minimal structure that detects edits, deletions, insertions and reordering.
+
+**Testing.** `tests/test_provenance.py`: key-order-independent hashing; dedup within, across and between sources; chain linkage; detection of edited raw records, edited columns, deleted events and edited batches; 8 concurrent writers with an unbroken chain and no duplicates. `tests/test_parsers.py` covers each format plus invalid input.
+
+**Risks.**
+- Tamper-evident, not tamper-proof: a DB admin can recompute hashes, so anchor the chain head externally.
+- Ledger appends are serialised, which caps parallel ingest throughput (measured ~18–22k records/s).
+- Large batches are held in memory (50k cap).
+
+**Interview.** "Every raw record is content-addressed. The same SHA-256 is the dedup key, the event id and the tamper check. Batches are Merkle-rooted and chained like a minimal blockchain without consensus. Verification goes further than hash comparison: because parsers are pure, I re-parse the raw record and prove nobody edited the normalised fields analysts actually look at. I found and fixed a race where two concurrent batches could both claim the same new event in their Merkle roots, by moving the dedup lookup inside the ledger lock and adding a Postgres advisory lock."
+
+---
+
+## 2. Detection engine
+
+**What.** Nine explainable rules mapped to MITRE ATT&CK: brute force, success after failures, impossible travel, suspicious command lines (9 signatures), privileged group changes, lateral movement, exfiltration, log clearing, and prompt injection in telemetry (ATLAS AML.T0051).
+
+**Files.** `backend/app/detection/base.py`, `rules.py`, `engine.py`.
+
+**How.**
+- Events load once as slotted `EventView` tuples ordered by time.
+- Each rule groups by a key and applies an O(n) sliding window (`sliding_segments`, two pointers) or a per-key state machine.
+- Each candidate has a dedup key (rule + entity + window start); the detection id is a hash of it.
+- Re-runs create nothing new, and later evidence is merged into the existing detection.
+
+**Why.**
+- Analysts must see *why* something fired, and simple rules with visible thresholds give that.
+- Tuples instead of ORM objects avoid most of the ORM loading overhead.
+- Bounded sliding windows replaced gap-chained bursts after the 100k benchmark showed bursts chaining for hours (160 false positives → 0).
+
+**Testing.** `tests/test_detection.py`: threshold boundaries for every core rule, window expiry, internal vs external destinations, idempotent re-runs, full-scenario recall with zero false positives, and regression tests for the trickle and typo false positives, including a 60k-event FP check.
+
+**Risks.**
+- Signature regexes are evadable (obfuscation).
+- Thresholds are global, not per-entity baselines.
+- Detection reloads all relevant events on each run (~1 s at 100k). Incremental, watermark-based detection is the next step at larger scale.
+
+**Interview.** "Rules are pure functions over time-ordered tuples, so they're trivially unit-testable. My first brute-force rule used gap-based bursts, which looked fine at 20k events. At 100k, normal typos chained into hour-long bursts and produced 160 false positives. I switched to a bounded sliding window and a reset-on-success state machine, kept 100% recall, and added the exact pattern as a regression test."
+
+---
+
+## 3. Correlation
+
+**What.** Groups detections into investigations using shared entities within a time window. Scores them with an explainable formula and builds each investigation's evidence and context scope.
+
+**Files.** `backend/app/correlation/engine.py`.
+
+**How.**
+- Union-find over detections. For each entity, its detections are sorted by time and *consecutive* ones are unioned when within 2 h; that's enough for connectivity and keeps it O(n log n).
+- Entities appearing in more than 30% of a large candidate set are suppressed.
+- Score = (max severity weight + 8 per extra kill-chain stage + 2 per extra detection) × (0.7 + 0.3 × mean confidence), stored as a breakdown.
+- Existing open investigations are extended, never rebuilt, so analyst work survives re-runs.
+
+**Why.** Analysts triage incidents, not alerts. Shared entities plus time proximity is the standard, explainable correlation heuristic, and suppression prevents the classic "one DNS server merges everything" failure.
+
+**Testing.** `tests/test_correlation.py`: transitive linking, window separation, ubiquitous-entity suppression, kill-chain scoring, the scenario producing exactly two investigations with the lone low-severity alert left alone, stable re-runs, and late evidence extending an existing case.
+
+**Risks.**
+- Entity linking can over-merge when an attacker reuses a common service account.
+- Investigations are never split automatically.
+- Context scope is capped at 1,500 events.
+
+**Interview.** "Correlation is connected components over an entity graph, with a time constraint. The trick is not comparing all pairs: sorting each entity's detections and linking neighbours gives the same components in O(n log n). The score is additive and shown in the UI, so nobody has to trust a black box."
+
+---
+
+## 4. Evidence Integrity Engine (the differentiator)
+
+**What.** Validates every statement in every analysis against the evidence it cites. Six verdicts: verified, correlation, hypothesis, missing evidence, unsupported, contradictory. Unsafe claims block approval.
+
+**Files.** `backend/app/integrity/scope.py`, `extract.py`, `validator.py`; `ai/service.py` (summary checks); `docs/EVIDENCE_INTEGRITY.md`.
+
+**How.**
+- Citations resolve to in-scope, out-of-scope, or fabricated.
+- Deterministic extraction pulls entities, activities, quantities (with qualifiers), negations, gap statements, hedging and dismissals out of the text.
+- Checks run in order: hard failures → dismissals → absence/gap → activity presence → entity presence → attribution → quantities → temporal order → flooding.
+- Precedence picks the most dangerous applicable verdict, and reasons are recorded for the UI.
+
+**Why.** LLM output is untrusted input. An LLM judge shares the generator's failure modes, while rules are reproducible, sub-millisecond and explainable. The design principle is *fail safe*: unrecognised content can lower a verdict but never raise one.
+
+**Testing.**
+- `app/evaluation/suite.py`: 47 labelled cases (31 adversarial), 16 held-out paraphrases and 13 structural checks.
+- `tests/test_integrity.py` asserts zero unsafe acceptances and zero false rejections on the development suite, plus a clean deterministic baseline.
+- `tests/test_api.py` drives a mocked hallucinating LLM through the approval gate.
+
+**Risks.**
+- Lexicon recall: unusual phrasing isn't understood, but fails safe as "unsupported".
+- Quantity filtering prefers IP > user > host, so mixed-entity counts can be ambiguous.
+- Timestamps inside claim text aren't checked.
+
+**Interview.** "I treat the model like any untrusted input: parse, validate, and never let it straight into a decision. The validator checks citations, entities, counts, outcomes, order and attribution against the actual events. I built an adversarial suite with fabricated citations, decoy citations, reversed timelines and injected dismissals. I was honest about overfitting: I wrote a held-out set afterwards, it found a real unsafe acceptance, and I fixed it with a general rule rather than a patch, so it now fails safe."
+
+---
+
+## 5. AI layer (local LLM with deterministic fallback)
+
+**What.** Optional Ollama integration (default `llama3.2:3b`) using structured JSON-schema output, plus a template-based deterministic analyst that is always available.
+
+**Files.** `backend/app/ai/schema.py`, `prompt.py`, `ollama.py`, `deterministic.py`, `service.py`.
+
+**How.**
+- The evidence pack selects a slice of every detection's events (up to 60), gives each a short ref (`E12`), quotes and truncates text fields, and flags injected events.
+- Engine `auto` checks `/api/tags`, calls `/api/chat` with `format = schema` at temperature 0.1, and parses tolerantly but with hard size caps.
+- On any failure it falls back to the deterministic analyst and stores the reason.
+- The deterministic analyst writes observations, correlations, hypotheses and gap statements from the cited events.
+
+**Why.**
+- Zero cost and offline.
+- Short refs make small models cite reliably.
+- The fallback means the product works without any model, and it acts as a correctness baseline: it must score zero unsafe claims, which already caught a reversed-order bug in the templates.
+
+**Testing.** `tests/test_api.py` mocks the Ollama HTTP layer for three cases: a hallucinating model, garbage output (auto falls back, `ollama` mode returns an error), and Ollama down (falls back with a reason).
+
+**Risks.**
+- A 3B model takes seconds to tens of seconds on CPU-only Docker; run Ollama natively for Metal acceleration.
+- The prompt is truncated for an 8k context.
+- Model quality varies, which is exactly why the validator exists.
+
+**Interview.** "The AI is pluggable and optional by design. Every generator, whether LLM, templates or pasted text, feeds the same validator. The interesting engineering isn't the model call, it's what happens when the model is wrong, unavailable, or being manipulated by attacker-controlled log content."
+
+---
+
+## 6. Analyst workflow and audit trail
+
+**What.** Accept or reject individual claims. An analysis can be approved only once every unsafe claim has been rejected or explicitly overridden with a written justification. Investigation status and assignee changes, exports and verifications are all recorded in a hash-chained audit log.
+
+**Files.** `backend/app/api/investigations.py`, `audit.py`; `frontend/src/components/AnalysisPanel.tsx`.
+
+**How.** The server enforces the gate (HTTP 409 with the blocking claim ids). Overriding an unsafe verdict without a note returns 422. Each audit entry hashes the previous entry's hash plus its own canonical payload.
+
+**Why.** "Human in the loop" only means something if the system forces attention onto the risky parts, and the audit trail makes the review itself verifiable.
+
+**Testing.** `test_ollama_analysis_review_gate_and_audit` covers the gate, override justification, approval, re-review prevention, audit order and chain verification.
+
+**Risks.** The analyst name is a label, not authenticated identity (see SECURITY.md).
+
+**Interview.** "Approval is a state machine enforced server-side, not a UI convention. You can't approve an analysis while it contains a contradicted claim nobody has looked at."
+
+---
+
+## 7. Investigation UI
+
+**What.** React/TypeScript SPA with an overview dashboard, investigation queue, and investigation workspace (kill-chain strip, telemetry blind spots, AI review, timeline, entity graph, event table, detections, audit). Also an event explorer, detections and rule catalogue, integrity page (ledger, evaluation, playground), performance page, and ingest/system page. A global evidence inspector opens any event's raw record and provenance from anywhere.
+
+**Files.** `frontend/src/**`; `components/EvidenceInspector.tsx`, `EvidenceGraph.tsx`, `Timeline.tsx`, `AnalysisPanel.tsx`.
+
+**How.**
+- TanStack Query for caching and polling; URL-synced filters and tabs.
+- Keyset "load more" pagination.
+- Cytoscape for the graph: edges carry event ids, so clicking one opens exactly that evidence.
+- Hand-written SVG timeline with drag-to-zoom.
+- Verdict and severity colours are semantic tokens used everywhere.
+
+**Why.** Every visual element maps to stored data. Citations, graph edges, timeline points and table rows all lead to the same inspector, so an analyst can always get from a claim back to the raw evidence.
+
+**Testing.** `vitest` component and unit tests; `tsc --strict`; manual verification via headless-Chrome screenshots against a seeded backend.
+
+**Risks.**
+- The timeline renders up to 5,000 SVG nodes; beyond that it needs canvas or aggregation.
+- The investigation bundle is large (~150 KB gzipped) because of Cytoscape, so pages are code-split.
+
+**Interview.** "I designed the UI around one question: 'show me the evidence for that'. Every claim citation, graph edge and timeline point opens the same evidence inspector with the raw record, its hash, its ledger position, and a live integrity check."
+
+---
+
+## 8. Export
+
+**What.** ZIP bundle (investigation JSON, events JSONL with raw records and hashes, CSV, Markdown report, manifest with per-file SHA-256, bundle hash and ledger head), plus standalone `md`, `csv` and `json` downloads.
+
+**Files.** `backend/app/export.py`.
+
+**Why.** Evidence leaves the system: to legal, management or another team. A recipient can verify it without TraceLayer.
+
+**Testing.** `test_export_bundle_is_self_verifying` recomputes every file hash and every event hash from the bundle alone.
+
+**Risks.** Bundles contain raw logs, which may include sensitive data. CSV formula injection is neutralised.
+
+---
+
+## 9. Evaluation and benchmarks
+
+**What.** A reproducible adversarial evaluation and a stage-by-stage benchmark that also scores detection quality against ground truth. Both can run from the CLI or the UI and are stored as reports.
+
+**Files.** `backend/app/evaluation/suite.py`, `benchmarks/runner.py`, `docs/BENCHMARKS.md`.
+
+**Interview.** "Benchmarks found four real problems: a one-INSERT-per-row ORM path, a deep-copy hotspot, stale Postgres statistics after bulk load (167 → 65k records/s), and a false-positive explosion at scale. All four are fixed, measured, and have regression coverage."
+
+---
+
+## 10. Deployment
+
+**What.** Docker Compose (PostgreSQL 16, API, nginx UI, optional Ollama profile), migrations on startup, a non-root container, health checks, a Makefile, and GitHub Actions CI (lint, types, tests, evaluation, Postgres benchmark smoke test, frontend build).
+
+**Files.** `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, `Makefile`, `.github/workflows/ci.yml`.
+
+**Risks.** One API worker, because background jobs are in-process. Scaling out would mean an external queue and running migrations as a separate step.

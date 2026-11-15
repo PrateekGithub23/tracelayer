@@ -1,0 +1,49 @@
+# TraceLayer local stack. Everything here is free and runs offline.
+#
+#   docker compose up --build             -> UI on http://localhost:8080, API on :8000
+#   docker compose --profile llm up       -> also runs Ollama in a container (CPU only on macOS;
+#                                            a native `brew install ollama` uses the GPU and is much faster)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tracelayer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tracelayer-local-only}
+      POSTGRES_DB: tracelayer
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracelayer"]
+      interval: 3s
+      retries: 20
+    # Not published to the host: only the API container talks to the database.
+
+  api:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      TRACELAYER_DATABASE_URL: postgresql+psycopg://tracelayer:${POSTGRES_PASSWORD:-tracelayer-local-only}@db:5432/tracelayer
+      TRACELAYER_API_TOKEN: ${TRACELAYER_API_TOKEN:-}
+      TRACELAYER_LLM_MODE: ${TRACELAYER_LLM_MODE:-auto}
+      # Native Ollama on the Mac host (GPU accelerated). With --profile llm use http://ollama:11434
+      TRACELAYER_OLLAMA_URL: ${TRACELAYER_OLLAMA_URL:-http://host.docker.internal:11434}
+      TRACELAYER_OLLAMA_MODEL: ${TRACELAYER_OLLAMA_MODEL:-llama3.2:3b}
+      TRACELAYER_CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["127.0.0.1:8000:8000"]
+
+  web:
+    build: ./frontend
+    depends_on:
+      api: { condition: service_healthy }
+    ports: ["127.0.0.1:8080:8080"]
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [llm]
+    volumes: [ollama:/root/.ollama]
+    ports: ["127.0.0.1:11434:11434"]
+
+volumes:
+  pgdata:
+  ollama:

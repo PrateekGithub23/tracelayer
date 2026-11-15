@@ -1,0 +1,12 @@
+/* Global styles: Tailwind layers plus a few base rules for the dark SecOps theme. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { color-scheme: dark; }
+  body { @apply bg-ink-900 font-sans text-fg; background-image: radial-gradient(1200px 600px at 80% -10%, rgba(56,189,248,0.06), transparent 60%); background-attachment: fixed; }
+  ::selection { background: rgba(56, 189, 248, 0.3); }
+  * { scrollbar-width: thin; scrollbar-color: #243041 transparent; }
+  code { @apply font-mono; }
+}
