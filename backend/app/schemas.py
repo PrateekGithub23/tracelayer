@@ -211,7 +211,7 @@ class AnalysisOut(ORM):
 
 
 class AnalysisRequest(BaseModel):
-    engine: Literal["auto", "ollama", "deterministic"] = "auto"
+    engine: Literal["auto", "ollama", "grounded", "deterministic"] = "auto"
 
 
 class ClaimReview(BaseModel):

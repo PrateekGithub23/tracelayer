@@ -25,14 +25,17 @@ export default function AiEngine() {
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const s = q.data! as any;
   const ready = s.reachable && s.model_available;
-  const llmUse = (s.usage ?? []).find((u: any) => u.engine === "ollama");
+  const llmRows = (s.usage ?? []).filter((u: any) => String(u.engine).startsWith("ollama"));
+  const llmUse = llmRows.length ? { count: llmRows.reduce((n: number, u: any) => n + u.count, 0),
+    avg_ms: llmRows.reduce((n: number, u: any) => n + u.avg_ms * u.count, 0) / Math.max(1, llmRows.reduce((n: number, u: any) => n + u.count, 0)),
+    max_ms: Math.max(...llmRows.map((u: any) => u.max_ms)) } : null;
   const detUse = (s.usage ?? []).find((u: any) => u.engine === "deterministic");
   return (
     <>
       <PageHeader title="AI engine" subtitle="An optional local model drafts analyses; the deterministic analyst is always available. Every claim from either is verified the same way." />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Local model" value={s.mode === "deterministic" ? "disabled" : ready ? "ready" : "unavailable"} accent={ready ? "#34d399" : s.mode === "deterministic" ? undefined : "#fbbf24"} hint={s.configured_model} />
-        <Stat label="Mode" value={s.mode} hint={s.mode === "auto" ? "LLM when available, else deterministic" : s.mode === "ollama" ? "LLM only; fails if unavailable" : "never calls a model"} />
+        <Stat label="Mode" value={s.mode} hint={s.mode === "grounded" ? "LLM writes only from verified facts" : s.mode === "auto" ? "free-form LLM when available, else deterministic" : s.mode === "ollama" ? "free-form LLM only; fails if unavailable" : "never calls a model"} />
         <Stat label="LLM analyses" value={llmUse?.count ?? 0} hint={llmUse ? `avg ${fmtMs(llmUse.avg_ms)}, max ${fmtMs(llmUse.max_ms)}` : "none yet"} />
         <Stat label="Deterministic" value={detUse?.count ?? 0} hint={`${s.fallbacks} were fallbacks from the LLM`} />
       </div>
@@ -63,7 +66,8 @@ export default function AiEngine() {
           <Card title="Configuration" className="lg:col-span-2" subtitle="Saved to the database and audited. Models must already be pulled with `ollama pull`; TraceLayer never downloads models itself.">
             <div className="flex flex-wrap items-end gap-3">
               <Select label="Mode" value={s.mode} onChange={(v) => save.mutate({ llm_mode: v as any })} className="w-80" options={[
-                { value: "auto", label: "Auto: local LLM if available, else deterministic" }, { value: "ollama", label: "Local LLM only" }, { value: "deterministic", label: "Deterministic only" }]} />
+                { value: "grounded", label: "Grounded: LLM writes from verified facts (recommended)" },
+                { value: "auto", label: "Auto: free-form LLM if available, else deterministic" }, { value: "ollama", label: "Free-form LLM only" }, { value: "deterministic", label: "Deterministic only" }]} />
               <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (model?.trim()) save.mutate({ ollama_model: model.trim() }); }}>
                 <TextInput label="Model" value={model ?? s.configured_model} onChange={setModel} mono className="w-60" />
                 <Button type="submit" disabled={!model || model === s.configured_model}>Save</Button>

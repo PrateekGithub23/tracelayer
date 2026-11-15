@@ -370,7 +370,12 @@ def run_suite(include_heldout_v2: bool = True) -> dict[str, Any]:
     dev2_rows, dev2_lat = run_set(build_dev_v2(main, ssh, truth, Case))
     dev3_rows, dev3_lat = run_set(build_dev_v3(main, ssh, truth, Case))
     dev2_lat += dev3_lat
-    sets = {"dev_v1": None, "regression_v1_heldout": heldout, "dev_v2": _metrics(dev2_rows), "dev_v3": _metrics(dev3_rows)}
+    sets = {
+        "dev_v1": None,
+        "regression_v1_heldout": heldout,
+        "dev_v2": _metrics(dev2_rows),
+        "dev_v3": _metrics(dev3_rows),
+    }
     ho2_rows: list[dict[str, Any]] = []
     ho3_rows: list[dict[str, Any]] = []
     if include_heldout_v2:

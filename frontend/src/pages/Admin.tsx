@@ -5,7 +5,7 @@ import { type FormEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import {
-  Button, Card, EmptyState, ErrorState, Modal, PageHeader, Pill, SecretReveal, Select, Spinner, Tabs, TextInput,
+  Button, Card, ConfirmButton, EmptyState, ErrorState, Modal, PageHeader, Pill, SecretReveal, Select, Spinner, Tabs, TextInput,
 } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -84,12 +84,16 @@ function Users() {
                   <td className="px-4">
                     <div className="flex justify-end gap-1.5">
                       <Button size="sm" variant="ghost" title="Sign-in history and activity" onClick={() => setDetail(u)}><History className="h-3.5 w-3.5" /></Button>
-                      <Button size="sm" variant="ghost" title="Sign out everywhere" disabled={!u.active_sessions} onClick={() => revoke.mutate(u.id)}><LogOut className="h-3.5 w-3.5" /></Button>
+                      <ConfirmButton variant="ghost" buttonTitle="Sign out everywhere" disabled={!u.active_sessions} title={`Sign ${u.display_name} out everywhere?`}
+                        body={`Ends all ${u.active_sessions ?? 0} active session(s). They can sign in again immediately.`} confirmLabel="Sign out" onConfirm={() => revoke.mutate(u.id)}><LogOut className="h-3.5 w-3.5" /></ConfirmButton>
                       <Button size="sm" variant="ghost" title="Issue a one-time recovery code" disabled={u.is_demo} onClick={() => recovery.mutate(u.id)}><KeyRound className="h-3.5 w-3.5" /></Button>
-                      <Button size="sm" variant={u.status === "active" ? "danger" : "default"} disabled={self || u.is_demo}
-                        onClick={() => patch.mutate({ id: u.id, body: { status: u.status === "active" ? "disabled" : "active" } })}>
-                        {u.status === "active" ? "Disable" : "Enable"}
-                      </Button>
+                      {u.status === "active" ? (
+                        <ConfirmButton label="Disable" disabled={self || u.is_demo} title={`Disable ${u.display_name}?`}
+                          body="They are signed out everywhere and cannot sign in until re-enabled. Their history is kept." confirmLabel="Disable account"
+                          onConfirm={() => patch.mutate({ id: u.id, body: { status: "disabled" } })} />
+                      ) : (
+                        <Button size="sm" disabled={self || u.is_demo} onClick={() => patch.mutate({ id: u.id, body: { status: "active" } })}>Enable</Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -238,7 +242,8 @@ function SettingsPanel() {
       <Card title="AI engine" subtitle="See the AI engine page for model status, a live test and latency." className="lg:col-span-2">
         <div className="flex flex-wrap items-end gap-3">
           <Select label="Mode" value={s.llm_mode} onChange={(v) => save.mutate({ llm_mode: v as typeof s.llm_mode })} className="w-72" options={[
-            { value: "auto", label: "Auto: local LLM if available, else deterministic" }, { value: "ollama", label: "Local LLM only (fail if unavailable)" },
+            { value: "grounded", label: "Grounded LLM from verified facts (recommended)" },
+            { value: "auto", label: "Auto: free-form LLM if available, else deterministic" }, { value: "ollama", label: "Free-form LLM only (fail if unavailable)" },
             { value: "deterministic", label: "Deterministic only (no model)" }]} />
           <ModelInput initial={s.ollama_model} onSave={(m) => save.mutate({ ollama_model: m })} />
         </div>

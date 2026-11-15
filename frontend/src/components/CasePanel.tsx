@@ -14,7 +14,7 @@ import { fmtRelative, fmtTime, shortHash } from "../lib/format";
 import type { InvestigationDetail } from "../lib/types";
 import { useInspector } from "./EvidenceInspector";
 import { useToast } from "./Toast";
-import { Button, Card, EmptyState, ErrorState, Modal, Select, Spinner, TextArea } from "./ui";
+import { Button, Card, ConfirmButton, EmptyState, ErrorState, Modal, Select, Spinner, TextArea } from "./ui";
 
 function useCaseMutation(inv: InvestigationDetail) {
   const qc = useQueryClient();
@@ -159,7 +159,9 @@ export function CommentsPanel({ invId }: { invId: string }) {
         {!c.deleted && c.author_id === me?.user.id && (
           <span className="flex gap-1">
             <button aria-label="Edit" className="rounded p-1 text-fg-faint hover:bg-ink-700 hover:text-fg" onClick={() => setEditing({ id: c.id, body: c.body ?? "" })}><Pencil className="h-3.5 w-3.5" /></button>
-            <button aria-label="Delete" className="rounded p-1 text-fg-faint hover:bg-ink-700 hover:text-rose-300" onClick={() => del.mutate(c.id)}><Trash2 className="h-3.5 w-3.5" /></button>
+            <ConfirmButton variant="ghost" buttonTitle="Delete" title="Delete this entry?" confirmLabel="Delete"
+              body="The text is removed from the case. A hash of it stays in the audit log, so the deletion itself is provable."
+              onConfirm={() => del.mutate(c.id)}><Trash2 className="h-3.5 w-3.5" /></ConfirmButton>
           </span>
         )}
       </div>
@@ -209,7 +211,9 @@ export function PinsPanel({ invId }: { invId: string }) {
                 <span className="font-mono text-[12px] text-sky-200">{p.event_id}</span> <span className="text-fg-muted">{p.event_type} · {p.host ?? "—"} · {p.username ?? "—"} · {fmtTime(p.timestamp)}</span>
                 {p.note && <div className="text-[12px] text-fg-faint">“{p.note}” by {p.added_by}</div>}
               </button>
-              {can("evidence:pin") && <Button size="sm" variant="ghost" onClick={() => unpin.mutate(p.event_id)}><PinOff className="h-3.5 w-3.5" />Unpin</Button>}
+              {can("evidence:pin") && <ConfirmButton variant="ghost" title="Unpin this event?" confirmLabel="Unpin"
+                body="Removes the reference from the case. The event itself is evidence and is not changed."
+                onConfirm={() => unpin.mutate(p.event_id)}><PinOff className="h-3.5 w-3.5" />Unpin</ConfirmButton>}
             </li>
           ))}
         </ul>

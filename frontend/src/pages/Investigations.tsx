@@ -3,9 +3,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, CheckCircle2, Search, Siren, Trash2, UserPlus } from "lucide-react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useToast } from "../components/Toast";
-import { Button, Card, EmptyState, ErrorState, PageHeader, Pill, Select, SeverityBadge, Spinner, Tabs } from "../components/ui";
+import { Button, Card, EmptyState, ErrorState, PageHeader, Pill, PromptDialog, Select, SeverityBadge, Spinner, Tabs } from "../components/ui";
 import { api, ApiError, type InvestigationQuery } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { PRIORITY_META, STATUS_META } from "../lib/cases";
@@ -47,10 +48,13 @@ export default function Investigations() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["investigations"] }),
   });
   const active = Object.values(filters).some(Boolean);
+  const [naming, setNaming] = useState(false);
 
   return (
     <>
       <PageHeader title="Investigations" subtitle="Correlated detections become cases. Take one, work it, and send it for review." />
+      <PromptDialog open={naming} onClose={() => setNaming(false)} title="Save this view" label="Filter name"
+        placeholder="e.g. Critical cases I own" onSubmit={(n) => saveFilter.mutate(n)} />
       <Tabs<View> value={view} onChange={(v) => set("view", v)} tabs={[
         { id: "open", label: "All open", count: queues.data?.open },
         { id: "mine", label: "My investigations", count: queues.data?.mine },
@@ -77,7 +81,7 @@ export default function Investigations() {
           <Select label="Sort" value={filters.sort || "score"} onChange={(v) => set("sort", v === "score" ? "" : v)} className="w-36" options={[
             { value: "score", label: "Risk score" }, { value: "priority", label: "Priority" }, { value: "updated", label: "Last updated" }, { value: "created", label: "Newest" }]} />
           <Button size="sm" variant="ghost" disabled={!active && view === "open"} title="Save the current view and filters"
-            onClick={() => { const n = window.prompt("Name this filter"); if (n?.trim()) saveFilter.mutate(n.trim()); }}>
+            onClick={() => setNaming(true)}>
             <Bookmark className="h-3.5 w-3.5" />Save
           </Button>
         </div>

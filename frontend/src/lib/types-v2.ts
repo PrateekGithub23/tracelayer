@@ -34,7 +34,7 @@ export interface Invitation {
 }
 
 export interface AppSettings {
-  registration_mode: "disabled" | "invite" | "open"; llm_mode: "auto" | "ollama" | "deterministic"; ollama_model: string;
+  registration_mode: "disabled" | "invite" | "open"; llm_mode: "auto" | "grounded" | "ollama" | "deterministic"; ollama_model: string;
   ollama_url: string; ollama_timeout_s: number; session_idle_minutes: number; session_absolute_hours: number;
   cookie_secure: boolean; allow_synthetic: boolean; env: string;
 }

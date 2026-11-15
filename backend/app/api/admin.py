@@ -53,7 +53,7 @@ class InviteBody(BaseModel):
 
 class SettingsBody(BaseModel):
     registration_mode: Literal["disabled", "invite", "open"] | None = None
-    llm_mode: Literal["auto", "ollama", "deterministic"] | None = None
+    llm_mode: Literal["auto", "grounded", "ollama", "deterministic"] | None = None
     ollama_model: str | None = Field(default=None, max_length=100, pattern=r"^[A-Za-z0-9_.:\-/]+$")
 
 

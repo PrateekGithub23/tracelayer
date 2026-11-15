@@ -3,7 +3,7 @@
 
 import clsx from "clsx";
 import { AlertTriangle, Inbox, Loader2, X } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/api";
 import { SEVERITY_STYLE, VERDICT_META } from "../lib/format";
 import type { Severity, Verdict } from "../lib/types";
@@ -220,15 +220,30 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
 export function Modal({ open, onClose, title, children, footer }: {
   open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Keyboard users: focus moves into the dialog, Tab stays inside it, and focus returns on close.
+    const previous = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(ref.current?.querySelectorAll<HTMLElement>(
+      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])") ?? []).filter((el) => !el.hasAttribute("disabled"));
+    const first = focusables().find((el) => el.tagName !== "BUTTON" || !el.getAttribute("aria-label")?.startsWith("Close")) ?? focusables()[0];
+    first?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "Tab") {
+        const f = focusables();
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); previous?.focus?.(); };
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+    <div ref={ref} className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
       <div className="absolute inset-0 bg-ink-950/75 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-xl border border-ink-600 bg-ink-850 shadow-2xl">
         <header className="flex items-center justify-between border-b border-ink-700 px-5 py-3.5">
@@ -266,5 +281,39 @@ export function SecretReveal({ label, value, note }: { label: string; value: str
       </div>
       <p className="mt-2 text-[11.5px] text-amber-100/80">{note ?? "Shown once. TraceLayer stores only a hash of it and cannot display it again."}</p>
     </div>
+  );
+}
+
+/** Confirmation for destructive or hard-to-undo actions. Renders the trigger and its confirm dialog. */
+export function ConfirmButton({ label, title, body, confirmLabel = "Confirm", onConfirm, size = "sm", variant = "danger", disabled, buttonTitle, children }: {
+  label?: ReactNode; title: string; body: ReactNode; confirmLabel?: string; onConfirm: () => void; size?: "sm" | "md";
+  variant?: "default" | "danger" | "ghost"; disabled?: boolean; buttonTitle?: string; children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size={size} variant={variant} disabled={disabled} title={buttonTitle} onClick={() => setOpen(true)}>{children ?? label}</Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={title}
+        footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="danger" onClick={() => { setOpen(false); onConfirm(); }}>{confirmLabel}</Button></>}>
+        <div className="text-[13px] text-fg-muted">{body}</div>
+      </Modal>
+    </>
+  );
+}
+
+/** Small text-entry dialog (replaces window.prompt, which is unstyled and blocks the page). */
+export function PromptDialog({ open, title, label, placeholder, confirmLabel = "Save", onSubmit, onClose, required = true }: {
+  open: boolean; title: string; label: string; placeholder?: string; confirmLabel?: string; required?: boolean;
+  onSubmit: (value: string) => void; onClose: () => void;
+}) {
+  const [value, setValue] = useState("");
+  useEffect(() => { if (open) setValue(""); }, [open]);
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <form onSubmit={(e) => { e.preventDefault(); if (!required || value.trim()) { onSubmit(value.trim()); onClose(); } }} className="space-y-3">
+        <TextInput label={label} value={value} onChange={setValue} placeholder={placeholder} />
+        <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={required && !value.trim()}>{confirmLabel}</Button></div>
+      </form>
+    </Modal>
   );
 }

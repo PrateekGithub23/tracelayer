@@ -27,7 +27,7 @@ from app.ids import new_id
 from app.integrity.extract import extract
 from app.integrity.provenance import sha256_hex
 from app.integrity.scope import Scope, build_scope
-from app.integrity.validator import ClaimInput, ClaimResult, validate_all
+from app.integrity.validator import UNSAFE, ClaimInput, ClaimResult, validate_all
 from app.models import AIAnalysis, Claim, Investigation
 
 
@@ -81,7 +81,8 @@ def _generate(scope: Scope, inv: Investigation, engine: str, db: Session | None 
     mode, _model = effective_llm(db)
     prompt, pack_sha, pack_meta = build_prompt(scope, inv, settings.llm_max_events)
     fallback_reason: str | None = None
-    want_llm = engine == "ollama" or (engine == "auto" and mode != "deterministic")
+    want_llm = engine in ("ollama", "grounded") or (engine == "auto" and mode != "deterministic")
+    grounded = engine == "grounded" or (engine == "auto" and mode == "grounded")
     provenance: dict[str, Any] = {"requested_engine": engine, "configured_mode": mode, "llm_attempted": want_llm}
 
     if want_llm:
@@ -95,23 +96,39 @@ def _generate(scope: Scope, inv: Investigation, engine: str, db: Session | None 
                 raise OllamaError(f"Ollama not reachable at {client.base_url} ({status['error']})")
             if not status["model_available"]:
                 raise OllamaError(f"model '{client.model}' is not pulled (run: ollama pull {client.model})")
+            if grounded:
+                from app.ai.grounded import GROUNDED_SCHEMA, GROUNDED_SYSTEM, build_grounded_prompt, fact_table
+
+                facts = fact_table(scope, inv)
+                if not facts:
+                    raise OllamaError("grounded mode found no verified facts to give the model")
+                system, prompt, schema = GROUNDED_SYSTEM, build_grounded_prompt(inv, facts), GROUNDED_SCHEMA
+            else:
+                system, schema = SYSTEM_PROMPT, JSON_SCHEMA
             if not _GENERATION_SLOT.acquire(blocking=False):
                 raise ModelBusy("the local model is busy with another analysis; try again shortly")
             try:
-                content, meta = client.chat_json(SYSTEM_PROMPT, prompt, JSON_SCHEMA)
+                content, meta = client.chat_json(system, prompt, schema)
             finally:
                 _GENERATION_SLOT.release()
             provenance["model_latency_ms"] = meta.get("wall_ms")
             try:
-                output = parse_analysis_output(content)
+                if grounded:
+                    from app.ai.grounded import to_output
+
+                    output, gmeta = to_output(content, facts)
+                    provenance.update(gmeta)
+                else:
+                    output = parse_analysis_output(content)
                 provenance["json_valid"] = True
             except ValueError as exc:
                 provenance["json_valid"] = False
                 raise OllamaError(f"model output rejected: {exc}") from exc
-            return {"engine": "ollama", "model": client.model, "output": output, "raw": content,
-                    "prompt_sha": sha256_hex(SYSTEM_PROMPT + prompt), "pack_sha": pack_sha,
+            used = "ollama-grounded" if grounded else "ollama"
+            return {"engine": used, "model": client.model, "output": output, "raw": content,
+                    "prompt_sha": sha256_hex(system + prompt), "pack_sha": pack_sha,
                     "meta": {**meta, **pack_meta, "event_ids": None}, "fallback_reason": None,
-                    "provenance": {**provenance, "engine_used": "ollama"}}  # fmt: skip
+                    "provenance": {**provenance, "engine_used": used, "pipeline": "grounded" if grounded else "free-form"}}  # fmt: skip
         except OllamaError as exc:
             if engine == "ollama":
                 raise AnalysisError(str(exc)) from exc
@@ -152,6 +169,13 @@ def run_analysis(db: Session, investigation_id: str, engine: str = "auto", actor
     )  # fmt: skip
     db.add(analysis)
     _attach_claims(analysis, results)
+    if gen["engine"] == "ollama-grounded":
+        # Stage 3b: the grounded pipeline rejects claims that fail verification instead of leaving them pending.
+        # This is a recorded system decision (reason in the note); hypotheses and gaps still go to the analyst.
+        for c in analysis.claims:
+            if c.verdict in UNSAFE:
+                c.review_status = "rejected"
+                c.review_note = "Rejected automatically by the grounded pipeline: " + "; ".join(c.reasons)[:500]
     audit.record(db, actor=actor, action="analysis.created", target_type="investigation", target_id=inv.id,
                  details={"analysis_id": analysis.id, "engine": analysis.engine, "model": analysis.model,
                           "integrity_score": integrity["integrity_score"],

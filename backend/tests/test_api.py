@@ -274,3 +274,36 @@ def test_standalone_verifier_accepts_bundle_and_detects_tampering(
             z.writestr(n, d)
     out = subprocess.run([sys.executable, "-I", str(tool), str(bad)], capture_output=True, text=True)
     assert out.returncode == 1 and "raw record does not match content_hash" in out.stdout
+
+
+def test_grounded_pipeline_derives_citations_and_rejects_unsafe(client: TestClient, seeded: dict[str, Any],
+                                                                monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """Grounded mode: the model can only reference verified facts; citations are derived; unsafe claims are
+    auto-rejected with a recorded reason; unknown fact ids are dropped and counted."""
+    from app.ai.grounded import fact_table
+    from app.integrity.scope import build_scope
+    from app.models import Investigation
+
+    inv_id = seeded["main"]["id"]
+    with session_factory()() as s:
+        facts = fact_table(build_scope(s, inv_id), s.get(Investigation, inv_id))
+    assert facts and all(f["citations"] for f in facts)
+    f1 = facts[0]
+    _mock_ollama(monkeypatch, json.dumps({"summary": "Grounded summary.", "claims": [
+        {"text": f1["text"], "kind": "observation", "fact_ids": ["F1"]},
+        {"text": f1["text"].rstrip(".") + " and also contacted 45.77.12.9.", "kind": "observation", "fact_ids": ["F1", "F99"]},
+        {"text": "This may be a ransomware precursor.", "kind": "hypothesis", "fact_ids": []},
+    ]}))  # fmt: skip
+    a = client.post(f"/api/investigations/{inv_id}/analyses", json={"engine": "grounded"}).json()
+    assert a["engine"] == "ollama-grounded"
+    gen = a["integrity"]["generation"]
+    assert gen["pipeline"] == "grounded" and gen["unknown_fact_ids"] == 1 and gen["facts"] == len(facts)
+    c_ok, c_bad, c_hyp = a["claims"]
+    assert c_ok["verdict"] in ("verified_observation", "heuristic_correlation")
+    assert c_ok["raw_citations"] and set(c_ok["raw_citations"]) <= {e for f in facts for e in f["citations"]}
+    assert c_bad["verdict"] == "unsupported_claim" and c_bad["review_status"] == "rejected"
+    assert c_bad["review_note"].startswith("Rejected automatically by the grounded pipeline")
+    assert c_hyp["verdict"] == "ai_hypothesis" and c_hyp["review_status"] == "pending"
+    # Nothing unsafe is left pending, so the analyst can approve after reviewing hypotheses.
+    ok = client.post(f"/api/analyses/{a['id']}/review", json={"decision": "approve", "note": "reviewed"})
+    assert ok.status_code == 200

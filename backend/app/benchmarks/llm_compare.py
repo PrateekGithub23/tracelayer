@@ -56,10 +56,12 @@ def _score(scope: Any, gen: dict[str, Any]) -> dict[str, Any]:
         "requires_review": sum(1 for r in results if r.checks.get("requires_review")),
         "detection_coverage": round(covered / len(scope.detections), 3) if scope.detections else None,
         "summary_issues": len(integrity["summary_issues"]), "integrity_score": integrity["integrity_score"],
+        "trusted_claims": sum(verdicts[v] for v in TRUSTED),
+        "unsafe_rate": round(sum(verdicts[v] for v in UNSAFE) / len(results), 3) if results else None,
     }  # fmt: skip
 
 
-def run(runs: int, otrf_file: str | None) -> dict[str, Any]:
+def run(runs: int, otrf_file: str | None, modes: tuple[str, ...] = ("ollama", "grounded")) -> dict[str, Any]:
     db, truth = build_environment()
     targets = [("synthetic: 7-stage intrusion", _find_investigation(db, "TL-EXFIL-001").id)]
     ssh = next(
@@ -98,40 +100,45 @@ def run(runs: int, otrf_file: str | None) -> dict[str, Any]:
             "json_valid": True,
             **_score(scope, gen),
         }
-        for i in range(runs):
-            t = time.perf_counter()
-            try:
-                gen = _generate(scope, inv, "ollama")
-                rec = {"run": i + 1, "json_valid": True, "latency_ms": round((time.perf_counter() - t) * 1000, 1),
-                       "model": gen["model"], "model_digest": gen["provenance"].get("model_digest"),
-                       "output_tokens": gen["meta"].get("output_tokens"), **_score(scope, gen)}  # fmt: skip
-            except AnalysisError as exc:
-                rec = {"run": i + 1, "json_valid": "rejected" not in str(exc) and "Ollama" not in str(exc),
-                       "latency_ms": round((time.perf_counter() - t) * 1000, 1), "error": str(exc)[:300]}  # fmt: skip
-                rec["json_valid"] = False if "model output rejected" in str(exc) else None
-            row["llm_runs"].append(rec)
-            print(
-                f"  {label} run {i + 1}: {json.dumps({k: rec.get(k) for k in ('json_valid', 'latency_ms', 'claims', 'unsafe_claims', 'detection_coverage', 'error')})}",
-                flush=True,
-            )
+        for mode in modes:
+            key = "llm_runs" if mode == "ollama" else f"{mode}_runs"
+            row.setdefault(key, [])
+            for i in range(runs):
+                t = time.perf_counter()
+                try:
+                    gen = _generate(scope, inv, mode)
+                    rec = {"run": i + 1, "json_valid": True, "latency_ms": round((time.perf_counter() - t) * 1000, 1),
+                           "model": gen["model"], "engine": gen["engine"], "model_digest": gen["provenance"].get("model_digest"),
+                           "unknown_fact_ids": gen["provenance"].get("unknown_fact_ids"),
+                           "output_tokens": gen["meta"].get("output_tokens"), **_score(scope, gen)}  # fmt: skip
+                except AnalysisError as exc:
+                    rec = {"run": i + 1, "latency_ms": round((time.perf_counter() - t) * 1000, 1), "error": str(exc)[:300],
+                           "json_valid": False if "model output rejected" in str(exc) else None}  # fmt: skip
+                row[key].append(rec)
+                print(
+                    f"  {label} [{mode}] run {i + 1}: {json.dumps({k: rec.get(k) for k in ('json_valid', 'latency_ms', 'claims', 'unsafe_claims', 'trusted_claims', 'fabricated_citations', 'detection_coverage', 'error')})}",
+                    flush=True,
+                )
         out["investigations"].append(row)
 
     def agg(rows: list[dict[str, Any]], key: str) -> float | None:
         vals = [r[key] for r in rows if r.get(key) is not None]
         return round(statistics.mean(vals), 3) if vals else None
 
-    llm = [r for inv in out["investigations"] for r in inv["llm_runs"]]
+    keys = ("latency_ms", "claims", "unsafe_claims", "unsafe_rate", "trusted_claims", "fabricated_citations",
+            "citation_validity", "requires_review", "detection_coverage", "integrity_score")  # fmt: skip
     det = [inv["deterministic"] for inv in out["investigations"]]
-    ok = [r for r in llm if r.get("json_valid")]
-    out["summary"] = {
-        "llm_runs": len(llm), "llm_invalid_json": sum(1 for r in llm if r.get("json_valid") is False),
-        "llm_other_failures": sum(1 for r in llm if r.get("json_valid") is None),
-        **{f"llm_{k}": agg(ok, k) for k in ("latency_ms", "claims", "unsafe_claims", "fabricated_citations",
-                                            "citation_validity", "requires_review", "detection_coverage", "integrity_score")},
-        **{f"det_{k}": agg(det, k) for k in ("latency_ms", "claims", "unsafe_claims", "fabricated_citations",
-                                             "citation_validity", "requires_review", "detection_coverage", "integrity_score")},
-        "llm_latency_p95_ms": sorted(r["latency_ms"] for r in ok)[int(len(ok) * 0.95) - 1] if ok else None,
-    }  # fmt: skip
+    out["summary"] = {"deterministic": {k: agg(det, k) for k in keys}}
+    for mode in modes:
+        key = "llm_runs" if mode == "ollama" else f"{mode}_runs"
+        runs_ = [r for inv in out["investigations"] for r in inv.get(key, [])]
+        ok = [r for r in runs_ if r.get("json_valid")]
+        lat = sorted(r["latency_ms"] for r in ok)
+        out["summary"][mode] = {"runs": len(runs_), "invalid_json": sum(1 for r in runs_ if r.get("json_valid") is False),
+                                "other_failures": sum(1 for r in runs_ if r.get("json_valid") is None),
+                                **{k: agg(ok, k) for k in keys},
+                                "latency_p95_ms": lat[max(0, int(len(lat) * 0.95) - 1)] if lat else None,
+                                "latency_stdev_ms": round(statistics.stdev(lat), 1) if len(lat) > 1 else None}  # fmt: skip
     out["environment"] = {
         "python": platform.python_version(),
         "platform": platform.platform(),

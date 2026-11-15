@@ -11,7 +11,7 @@ import { useAuth } from "../lib/auth";
 import { useToast } from "./Toast";
 import { EVENT_TYPE_COLOR, fmtBytes, fmtTime, shortHash } from "../lib/format";
 import type { EventItem } from "../lib/types";
-import { Button, Drawer, ErrorState, KV, Pill, SeverityBadge, Spinner } from "./ui";
+import { Button, Drawer, ErrorState, KV, Pill, PromptDialog, SeverityBadge, Spinner } from "./ui";
 
 interface InspectorState { eventId?: string; list?: { title: string; ids: string[] } }
 interface InspectorApi { openEvent: (id: string) => void; openEvents: (title: string, ids: string[]) => void }
@@ -94,12 +94,19 @@ function PinButton({ eventId }: { eventId: string }) {
   const toast = useToast();
   const invId = match?.params.id;
   const pin = useMutation({
-    mutationFn: () => api.pin(invId!, eventId, window.prompt("Why is this event important? (optional)") ?? undefined),
+    mutationFn: (note: string) => api.pin(invId!, eventId, note || undefined),
     onSuccess: () => { toast("success", "Pinned to the case"); qc.invalidateQueries({ queryKey: ["pins", invId] }); qc.invalidateQueries({ queryKey: ["activity", invId] }); },
     onError: (err) => toast(err instanceof ApiError && err.status === 409 ? "info" : "error", (err as Error).message),
   });
+  const [asking, setAsking] = useState(false);
   if (!invId || !can("evidence:pin")) return null;
-  return <Button size="sm" onClick={() => pin.mutate()} disabled={pin.isPending}><Pin className="h-3.5 w-3.5" />Pin to this case</Button>;
+  return (
+    <>
+      <Button size="sm" onClick={() => setAsking(true)} disabled={pin.isPending}><Pin className="h-3.5 w-3.5" />Pin to this case</Button>
+      <PromptDialog open={asking} onClose={() => setAsking(false)} title="Pin evidence to this case" label="Why is this event important? (optional)"
+        required={false} confirmLabel="Pin" onSubmit={(note) => pin.mutate(note)} />
+    </>
+  );
 }
 
 function EventPanel({ id, onBack }: { id: string; onBack?: () => void }) {
