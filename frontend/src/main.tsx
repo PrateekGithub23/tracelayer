@@ -33,7 +33,8 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+      {/* Base keeps its trailing slash, so the root route is "/<repo>/" (what static hosts serve), never "/<repo>". */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <ToastProvider>
           <AuthProvider>
             <InspectorProvider>

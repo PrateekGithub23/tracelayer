@@ -79,9 +79,11 @@ def build(out: Path, otrf_file: str | None, use_llm: bool) -> dict[str, Any]:
         det = ok(c.post(f"/api/investigations/{main['id']}/analyses", json={"engine": "deterministic"}))
         llm = None
         if use_llm:
-            r = c.post(f"/api/investigations/{main['id']}/analyses", json={"engine": "ollama"})
-            llm = r.json() if r.status_code == 200 else None
-            print("LLM analysis:", "created" if llm else f"not available ({r.status_code}: {r.text[:120]})")
+            # Both pipelines on the same case, so visitors can compare free-form vs grounded generation.
+            for engine in ("ollama", "grounded"):
+                r = c.post(f"/api/investigations/{main['id']}/analyses", json={"engine": engine})
+                llm = (r.json() if r.status_code == 200 else None) or llm
+                print(f"LLM analysis ({engine}):", "created" if r.status_code == 200 else f"not available ({r.status_code}: {r.text[:120]})")
 
         # The lead triages and hands the case to the demo analyst; the deterministic draft gets reviewed.
         v = main["version"]
@@ -153,7 +155,7 @@ def build(out: Path, otrf_file: str | None, use_llm: bool) -> dict[str, Any]:
         for p in ("/auth/me", "/auth/config", "/system/status", "/metrics/overview", "/metrics/performance", "/llm/status",
                   "/datasets", "/detections", "/rules", "/users/directory", "/queues", "/auth/sessions", "/auth/login-history",
                   "/ingest/batches", "/reports?kind=evaluation", "/reports?kind=benchmark", "/pipeline/runs", "/filters",
-                  "/investigations?view=all", "/events/facets"):  # fmt: skip
+                  "/investigations?view=all", "/events/facets", "/datasets/coverage", "/auth/activity"):  # fmt: skip
             get(p)
         all_invs = rec["/investigations?view=all"]
         for i in all_invs:

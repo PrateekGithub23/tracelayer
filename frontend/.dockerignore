@@ -1,2 +1,12 @@
+# The image is built from source; local builds, test artefacts and demo data stay out of the build context.
 node_modules
 dist
+dist-demo
+demo-public
+test-results
+playwright-report
+e2e
+e2e-demo
+.env
+.env.*
+*.tsbuildinfo

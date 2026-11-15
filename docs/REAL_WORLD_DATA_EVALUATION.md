@@ -1,5 +1,10 @@
 # Real-World Telemetry Evaluation
 
+> **v3 update (2026-11-15):** normalisation coverage rose from 3.5% typed to 97.7–99.8% *fully* normalised,
+> two new rules were validated on fresh labelled datasets, and three real-data bugs were fixed. See
+> [v3: normalisation coverage and detection](#v3-normalisation-coverage-and-detection) at the end. The v2 sections
+> below are kept as the historical record.
+
 **Question:** does TraceLayer's pipeline (parsing, hashing, detection, correlation) hold up on
 publicly recorded attack telemetry rather than its own synthetic scenario?
 
@@ -156,3 +161,75 @@ the synthetic events. This is why throughput is about half the ~22k events/s syn
 - No benign traffic means rule noise on a real network is unmeasured. A benign corpus would be needed
   before quoting any false-positive rate.
 - Only the host-log ZIPs were used. OTRF's network captures (PCAP/Zeek) for the same scenarios were not.
+
+
+---
+
+## v3: normalisation coverage and detection
+
+### Why ~97% of events were "other" in v2
+
+They were **not rejected**: every record was accepted, hashed and stored with its raw content. They were
+*raw-only*: the v2 adapter mapped only about a dozen (channel, event id) pairs. Investigation of all 18,661
+events (82 distinct channel and event-id pairs) showed four causes:
+
+1. **Unmapped event classes:** Sysmon process access (10), registry (12/13), image load (7), object-access
+   auditing (4656/4658/4663/4690), Windows Filtering Platform bind/listen/policy (5154/5158/5447), PowerShell
+   pipeline (800/4103), logon context (4627), and privilege use (4672/4673/4674/4703).
+2. **A real bug:** the channel name appears as both `Security` and `security` in the same dataset. v2
+   compared it case-sensitively, so even *supported* events (e.g. network connections, 5156) fell through.
+3. **Rich fields discarded:** process GUIDs, PIDs, parent paths, user SIDs, logon ids, hashes and integrity
+   levels were present but not normalised, so parent-child relationships could not be followed.
+4. **Free-text details:** PowerShell 800 and 4103 put the host command line (here Empire's
+   `powershell -noP -enc …` launcher) in key/value text with inconsistent spacing (`HostApplication=` vs
+   `Host Application = `).
+
+### What v3 changed
+
+A **versioned** adapter, `otrf_windows.v3` (50 mappings), with schema `tl-event/3`, OCSF-style class hints
+(class *names* only; not an OCSF-compliant format), identity, device, process, parent, network, registry and
+module fields, credential redaction (also in parent command lines and registry values), and **per-event
+normalisation diagnostics**: `full`, `partial` (with missing fields named) or `raw_only` (with the reason).
+
+Events are immutable evidence and verification re-runs the recorded parser, so v2 is **frozen** (existing
+events still verify, as tested). An owner-only, audited `tracelayer dataset renormalize` moves events to v3
+without touching raw records, hashes, ids or batches (also tested).
+
+**Classification criteria were fixed before measuring.** `full` means every field *that source event
+provides* for its type was normalised. While auditing the result, one criterion was found too lenient (WMI
+events counted as full with just a message) and was **tightened**, which lowered the full count; one
+extraction bug (PowerShell key spacing) was **fixed**, which raised it. Both are recorded in the git history.
+
+### Coverage results (same parser, same criteria, all five datasets)
+
+| Dataset | Records | Rejected | Full | Partial | Raw-only | v2 typed |
+|---|---|---|---|---|---|---|
+| Empire WMIC backdoor (dev) | 12,278 | 0 | **99.59%** | 0.03% | 0.37% | 3.5% |
+| Empire Invoke-WMI (v2 held-out) | 6,383 | 0 | **97.74%** | 1.55% | 0.70% | 1.7% |
+| Empire Run keys (v3 validation) | 657 | 0 | **99.24%** | 0.00% | 0.76% | n/a |
+| Empire Mimikatz logonpasswords (v3 validation) | 6,026 | 0 | **99.80%** | 0.02% | 0.18% | n/a |
+| Empire net localgroup (v3 control) | 884 | 0 | **99.66%** | 0.00% | 0.34% | n/a |
+
+Remaining partials are genuine source gaps (e.g. 94 PowerShell 800 messages truncated before the host
+application line). Remaining raw-only events: Security 4670/4769/4702/5058/5061, Sysmon 2/23, TaskScheduler
+129, PowerShell 400/600. They are listed, with counts and reasons, on **Datasets → Telemetry coverage**.
+
+Caveat: field profiling for this work looked at both v2 datasets, so the v2 held-out dataset is **no longer
+unseen** for anything built in v3. New rules were therefore validated only on datasets downloaded after the
+rules were committed.
+
+### Detection results (13 rules, v3 parser)
+
+| Dataset (OTRF label) | Alerts | Labelled technique detected | Notes |
+|---|---|---|---|
+| WMIC backdoor (T1047, T1136.001) | 5 | 2 / 2 | unchanged from v2: no new noise from 4× more typed events |
+| Invoke-WMI (T1047) | 2 | 1 / 1 | plus encoded PowerShell (T1059.001), consistent with Empire's stager but not in the label |
+| **Run keys (T1547)** | **1** | **1 / 1** | TL-PERS-002: `powershell.exe` set autostart value `Updater` |
+| **Mimikatz (T1003)** | **1** | **1 / 1** | TL-CRED-001: `powershell.exe` opened `lsass.exe` with `0x1010` |
+| net localgroup (T1069) | 0 | 0 / 1 | **miss**: no discovery rule exists; also shows the new rules stayed silent |
+
+TL-CRED-001 and TL-PERS-002 were committed (`66d5ea8`) **before** their validating datasets were
+downloaded. Across the five datasets, the two new rules fired exactly once each, both times on their
+labelled technique. Five small lab datasets cannot establish a false-positive rate; none is claimed.
+
+No unexpected cross-source correlations occurred (each dataset produced at most one case, from its own events).

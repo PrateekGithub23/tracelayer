@@ -2,20 +2,28 @@
 // the same workflow rules as the server.
 import { expect, type Page, test } from "@playwright/test";
 
-let apiCalls: string[] = [];
+const BASE = process.env.VITE_BASE ?? "/";
+let offending: string[] = [];
 test.beforeEach(async ({ page }) => {
-  apiCalls = [];
-  page.on("request", (r) => { if (new URL(r.url()).pathname.startsWith("/api")) apiCalls.push(r.url()); });
+  offending = [];
+  // Every request must stay on the demo's own origin and path: no /api, no other host or port (API, Ollama,
+  // PostgreSQL), no third-party CDN. Data URLs and blob URLs (downloads) are local to the page.
+  page.on("request", (r) => {
+    const u = new URL(r.url());
+    if (u.protocol === "data:" || u.protocol === "blob:") return;
+    if (u.host !== "localhost:5180" || !u.pathname.startsWith(BASE) || u.pathname.includes("/api/")) offending.push(r.url());
+  });
 });
-test.afterEach(() => expect(apiCalls, "the static demo must never call a backend").toEqual([]));
+test.afterEach(() => expect(offending, "the static demo must only load its own files").toEqual([]));
 
 // Client-side navigation: a full page.goto() reloads the app, which (by design) resets the demo state.
 async function go(page: Page, path: string) {
-  await page.evaluate((p) => { window.history.pushState({}, "", p); window.dispatchEvent(new PopStateEvent("popstate")); }, path);
+  const full = BASE.replace(/\/$/, "") + path;
+  await page.evaluate((p) => { window.history.pushState({}, "", p); window.dispatchEvent(new PopStateEvent("popstate")); }, full);
 }
 
 async function enter(page: Page, guided = false) {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: guided ? "Start the guided scenario" : "Go straight to the dashboard" }).click();
   await expect(page.getByText("Read-only public demo.")).toBeVisible();
 }
@@ -40,7 +48,7 @@ test("guided scenario walks through all eight steps with real data", async ({ pa
 test("case workflow follows server rules and resets on reload", async ({ page }) => {
   await enter(page);
   await go(page, "/investigations?view=mine");
-  await page.locator("a[href^='/investigations/inv_']").nth(1).click();
+  await page.locator("a[href*='/investigations/inv_']").nth(1).click();
   await expect(page.getByText("owner: Dana (demo analyst)")).toBeVisible();
   await page.getByRole("button", { name: "Request review" }).click();
   const dialog = page.getByRole("dialog");
@@ -55,14 +63,14 @@ test("case workflow follows server rules and resets on reload", async ({ page })
   await page.reload();
   await page.getByRole("button", { name: "Go straight to the dashboard" }).click();
   await go(page, "/investigations?view=mine");
-  await page.locator("a[href^='/investigations/inv_']").nth(1).click();
+  await page.locator("a[href*='/investigations/inv_']").nth(1).click();
   await expect(page.getByText("Investigating").first()).toBeVisible();
 });
 
 test("AI claims: approval is blocked until unsafe claims are handled", async ({ page }) => {
   await enter(page);
   await go(page, "/investigations?view=mine");
-  await page.locator("a[href^='/investigations/inv_']").nth(1).click();
+  await page.locator("a[href*='/investigations/inv_']").nth(1).click();
   await page.getByRole("tab", { name: /AI analysis/ }).click();
   await expect(page.getByText("llama3.2:3b").first()).toBeVisible();
   const approve = page.getByRole("button", { name: "Approve analysis" });
@@ -89,4 +97,14 @@ test("administration is not reachable in the demo", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Users & settings" })).toHaveCount(0);
   await go(page, "/admin");
   await expect(page.getByText("You don't have access to this page")).toBeVisible();
+});
+
+
+test("deep links and refresh work under the repository sub-path", async ({ page }) => {
+  await page.goto("./investigations?view=all");  // a deep link served by the 404.html SPA fallback in production
+  await expect(page.getByRole("heading", { name: "Explore the TraceLayer demo" })).toBeVisible();
+  await page.getByRole("button", { name: "Go straight to the dashboard" }).click();
+  await expect(page.getByText("Read-only public demo.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Explore the TraceLayer demo" })).toBeVisible();
 });
