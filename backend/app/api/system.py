@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app import __version__, audit, jobs, telemetry
 from app.ai.service import ollama_client
-from app.api.deps import analyst_name, require_writer
+from app.api.deps import require
 from app.audit import verify_audit_chain
+from app.auth.sessions import Principal
 from app.config import get_settings
 from app.db import get_db
 from app.db_utils import count_map
@@ -38,13 +39,13 @@ def health(db: Session = Depends(get_db)) -> dict[str, str]:
 
 
 @router.get("/system/status")
-def system_status(db: Session = Depends(get_db)) -> dict[str, Any]:
+def system_status(db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
     s = get_settings()
     llm = ollama_client().status() if s.llm_mode != "deterministic" else {"reachable": False, "disabled": True}
     return {
         "version": __version__,
         "database": db.get_bind().dialect.name,
-        "auth_required": bool(s.api_token),
+        "auth_required": True,
         "llm": {**llm, "mode": s.llm_mode, "url": s.ollama_url, "configured_model": s.ollama_model},
         "background_jobs": s.background_jobs,
     }
@@ -57,7 +58,7 @@ def _hour_bucket(db: Session) -> Any:
 
 
 @router.get("/metrics/overview")
-def overview(db: Session = Depends(get_db)) -> dict[str, Any]:
+def overview(db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
     """Every number on the dashboard is computed here from stored rows."""
     count = lambda model: db.scalar(select(func.count()).select_from(model)) or 0  # noqa: E731
     latest = db.scalar(select(func.max(Event.timestamp)))
@@ -117,7 +118,7 @@ def overview(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/metrics/performance")
-def performance(db: Session = Depends(get_db)) -> dict[str, Any]:
+def performance(db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> dict[str, Any]:
     runs = list(db.scalars(select(PipelineRun).where(PipelineRun.kind == "detect_correlate")
                            .order_by(PipelineRun.created_at.desc()).limit(30)))  # fmt: skip
     batches = list(db.scalars(select(IngestBatch).order_by(IngestBatch.seq.desc()).limit(50)))
@@ -146,13 +147,13 @@ def performance(db: Session = Depends(get_db)) -> dict[str, Any]:
 # --------------------------------------------------------------------------- integrity ledger
 
 
-@router.post("/integrity/verify", dependencies=[Depends(require_writer)])
-def verify_all(db: Session = Depends(get_db), actor: str = Depends(analyst_name)) -> dict[str, Any]:
+@router.post("/integrity/verify")
+def verify_all(db: Session = Depends(get_db), p: Principal = Depends(require("integrity:verify"))) -> dict[str, Any]:
     ledger = verify_ledger(db)
     chain = verify_audit_chain(db)
     payload = {"ok": ledger["ok"] and chain["ok"], "ledger": ledger, "audit_chain": chain}
     db.add(Report(id=new_id("rep"), kind="verification", payload=payload))
-    audit.record(db, actor=actor, action="integrity.verified", target_type="system", target_id="ledger",
+    audit.record(db, actor=p.actor, action="integrity.verified", target_type="system", target_id="ledger",
                  details={"ok": payload["ok"], "events_checked": ledger["events_checked"],
                           "issues": len(ledger["issues"])})  # fmt: skip
     db.commit()
@@ -162,8 +163,8 @@ def verify_all(db: Session = Depends(get_db), actor: str = Depends(analyst_name)
 # --------------------------------------------------------------------------- runs + reports
 
 
-@router.post("/pipeline/runs", response_model=RunOut, dependencies=[Depends(require_writer)])
-def start_pipeline(db: Session = Depends(get_db)) -> PipelineRun:
+@router.post("/pipeline/runs", response_model=RunOut)
+def start_pipeline(db: Session = Depends(get_db), _: Principal = Depends(require("pipeline:run"))) -> PipelineRun:
     run_id = jobs.submit("detect_correlate", jobs.detect_and_correlate)
     db.expire_all()
     return db.get(PipelineRun, run_id)  # type: ignore[return-value]
@@ -171,7 +172,7 @@ def start_pipeline(db: Session = Depends(get_db)) -> PipelineRun:
 
 @router.get("/pipeline/runs", response_model=list[RunOut])
 def list_runs(kind: str | None = None, limit: int = Query(default=30, ge=1, le=200),
-              db: Session = Depends(get_db)) -> list[PipelineRun]:  # fmt: skip
+              db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> list[PipelineRun]:  # fmt: skip
     stmt = select(PipelineRun).order_by(PipelineRun.created_at.desc()).limit(limit)
     if kind:
         stmt = stmt.where(PipelineRun.kind == kind)
@@ -179,7 +180,7 @@ def list_runs(kind: str | None = None, limit: int = Query(default=30, ge=1, le=2
 
 
 @router.get("/pipeline/runs/{run_id}", response_model=RunOut)
-def get_run(run_id: str, db: Session = Depends(get_db)) -> PipelineRun:
+def get_run(run_id: str, db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> PipelineRun:
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(404, "run not found")
@@ -188,7 +189,7 @@ def get_run(run_id: str, db: Session = Depends(get_db)) -> PipelineRun:
 
 @router.get("/reports", response_model=list[ReportOut])
 def list_reports(kind: str | None = None, limit: int = Query(default=20, ge=1, le=100),
-                 db: Session = Depends(get_db)) -> list[Report]:  # fmt: skip
+                 db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))) -> list[Report]:  # fmt: skip
     stmt = select(Report).order_by(Report.created_at.desc()).limit(limit)
     if kind:
         stmt = stmt.where(Report.kind == kind)
@@ -196,7 +197,9 @@ def list_reports(kind: str | None = None, limit: int = Query(default=20, ge=1, l
 
 
 @router.get("/reports/{report_id}", response_model=ReportOut)
-def get_report(report_id: str, db: Session = Depends(get_db)) -> Report:
+def get_report(
+    report_id: str, db: Session = Depends(get_db), _: Principal = Depends(require("metrics:read"))
+) -> Report:
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404, "report not found")
@@ -209,8 +212,8 @@ def _store_report(kind: str, payload: dict[str, Any], db: Session) -> dict[str, 
     return {"report_id": rep.id, "summary": payload.get("summary")}
 
 
-@router.post("/reports/evaluation", response_model=RunOut, dependencies=[Depends(require_writer)])
-def run_evaluation(db: Session = Depends(get_db), actor: str = Depends(analyst_name)) -> PipelineRun:
+@router.post("/reports/evaluation", response_model=RunOut)
+def run_evaluation(db: Session = Depends(get_db), _: Principal = Depends(require("evaluation:run"))) -> PipelineRun:
     """Run the adversarial evaluation suite on an isolated in-memory database."""
     from app.evaluation.suite import run_suite
 
@@ -219,8 +222,10 @@ def run_evaluation(db: Session = Depends(get_db), actor: str = Depends(analyst_n
     return db.get(PipelineRun, run_id)  # type: ignore[return-value]
 
 
-@router.post("/reports/benchmark", response_model=RunOut, dependencies=[Depends(require_writer)])
-def run_benchmark(body: BenchmarkRequest, db: Session = Depends(get_db)) -> PipelineRun:
+@router.post("/reports/benchmark", response_model=RunOut)
+def run_benchmark(
+    body: BenchmarkRequest, db: Session = Depends(get_db), _: Principal = Depends(require("benchmark:run"))
+) -> PipelineRun:
     """Measure ingest/detect/correlate/validate on an isolated temporary database."""
     from app.benchmarks.runner import run_benchmark as bench
 

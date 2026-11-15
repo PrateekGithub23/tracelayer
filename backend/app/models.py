@@ -291,3 +291,101 @@ class Report(Base):
     kind: Mapped[str] = mapped_column(String(20), index=True)  # "evaluation" | "benchmark"
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+# --------------------------------------------------------------------------- identity and access (v2)
+
+
+class User(Base):
+    """A human account. Passwords are Argon2id hashes; the plaintext never touches the database or logs."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)  # stored lower-cased
+    display_name: Mapped[str] = mapped_column(String(100))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20))  # admin | analyst | viewer
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active | disabled
+    must_change_password: Mapped[bool] = mapped_column(default=False)
+    is_demo: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    password_changed_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    created_by: Mapped[str | None] = mapped_column(String(24))
+
+
+class UserSession(Base):
+    """Server-side session. Only the SHA-256 of the bearer secret is stored, so a DB read cannot hijack sessions."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)  # public handle shown on the sessions page
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    csrf_token: Mapped[str] = mapped_column(String(64))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())  # absolute lifetime
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_reason: Mapped[str | None] = mapped_column(String(60))
+    ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+
+
+class LoginEvent(Base):
+    """Every sign-in attempt (success or failure) for login history and abuse investigation."""
+
+    __tablename__ = "login_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    email_attempted: Mapped[str] = mapped_column(String(254))
+    success: Mapped[bool] = mapped_column()
+    reason: Mapped[str] = mapped_column(String(40))
+    ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+
+
+class Invitation(Base):
+    """Admin-issued, single-use, expiring registration token (only its hash is stored)."""
+
+    __tablename__ = "invitations"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    email: Mapped[str | None] = mapped_column(String(254))
+    role: Mapped[str] = mapped_column(String(20))
+    created_by: Mapped[str] = mapped_column(String(24))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    used_by: Mapped[str | None] = mapped_column(String(24))
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class PasswordResetCode(Base):
+    """Admin-issued one-time recovery code (no email infrastructure needed). Hash only; 60-minute lifetime."""
+
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_by: Mapped[str] = mapped_column(String(24))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class AppSetting(Base):
+    """Admin-editable runtime settings (registration mode, LLM selection). Env vars provide defaults."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[str | None] = mapped_column(String(24))

@@ -15,12 +15,13 @@ from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
+from app.api.deps import require
 from app.db import get_db
 from app.integrity.ledger import verify_event
 from app.models import Detection, DetectionEvent, Event, IngestBatch, Investigation, InvestigationEvent
 from app.schemas import BatchOut, EventDetail, EventOut, EventPage
 
-router = APIRouter(prefix="/api/events", tags=["events"])
+router = APIRouter(prefix="/api/events", tags=["events"], dependencies=[Depends(require("events:read"))])
 
 
 def _like(term: str) -> str:

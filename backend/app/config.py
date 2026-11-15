@@ -18,9 +18,31 @@ class Settings(BaseSettings):
     # SQLite is the zero-setup default; Docker Compose overrides this with PostgreSQL.
     database_url: str = "sqlite:///./tracelayer.db"
 
-    # When set, every state-changing request must send `Authorization: Bearer <token>`.
-    # Left unset for local single-user development (a warning is logged at startup).
-    api_token: str | None = None
+    # "development" allows plain-HTTP cookies; "production" refuses to start with insecure settings.
+    env: Literal["development", "production", "test"] = "development"
+
+    # ---- authentication (v2). The v1 shared API token was removed: see docs/AUTHENTICATION.md.
+    # Secure cookies are required over HTTPS. Local HTTP development needs False (the default).
+    cookie_secure: bool = False
+    session_idle_minutes: int = 8 * 60  # sliding inactivity timeout
+    session_absolute_hours: int = 7 * 24  # hard cap, regardless of activity
+    # Argon2id parameters (RFC 9106 "second recommended" profile). Tests lower them for speed.
+    argon2_time_cost: int = 3
+    argon2_memory_kib: int = 64 * 1024
+    argon2_parallelism: int = 4
+    # Registration: "disabled" (admin creates accounts), "invite" (admin-issued links), "open" (local labs only).
+    registration_mode: Literal["disabled", "invite", "open"] = "invite"
+    # Optional one-time bootstrap: create this admin on startup if the users table is empty.
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_password: str | None = None
+    # Number of trusted reverse proxies in front of the API (0 = use the socket peer address).
+    trusted_proxies: int = 0
+    # Allow the synthetic scenario generator to write into this database (admin only either way).
+    allow_synthetic: bool = True
+    # Interactive API docs at /docs. Off by default so a public deployment does not advertise its surface.
+    expose_docs: bool = False
+    # Hard cap on any request body, enforced in ASGI middleware before parsing.
+    max_request_bytes: int = 30 * 1024 * 1024
 
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
 

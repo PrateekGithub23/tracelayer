@@ -10,8 +10,8 @@ runs are marked failed on startup if they were left 'running'.
 """
 
 import logging
+import secrets
 import threading
-import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -51,9 +51,12 @@ def _execute(run_id: str, fn: JobFn) -> None:
             stats = fn(db, run_id)
         status, error = "succeeded", None
     except Exception as exc:  # noqa: BLE001 - job boundary: record any failure
-        log.exception("job %s failed", run_id)
+        # The traceback goes to the server log only. Clients see the exception class and a correlation id,
+        # never file paths, library internals, or data that may be embedded in an exception message.
+        error_id = secrets.token_hex(6)
+        log.exception("job %s failed (error id %s)", run_id, error_id)
         stats, status = {}, "failed"
-        error = f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=5)}"[:4000]
+        error = f"{type(exc).__name__} (error id {error_id}; see server log)"
     with session_scope() as db:
         db.execute(update(PipelineRun).where(PipelineRun.id == run_id)
                    .values(status=status, stats=stats, error=error, finished_at=utcnow()))  # fmt: skip

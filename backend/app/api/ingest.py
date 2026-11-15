@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit, jobs
-from app.api.deps import analyst_name, require_writer
+from app.api.deps import require
+from app.auth.sessions import Principal
 from app.config import get_settings
 from app.db import get_db
 from app.ingestion.parsers import ParseError
@@ -37,8 +38,10 @@ def _ingest(db: Session, records: list[Any], source: str, parser: str, options: 
         raise HTTPException(400, str(exc)) from exc
 
 
-@router.post("/ingest/events", response_model=IngestResponse, dependencies=[Depends(require_writer)])
-def ingest_events(body: IngestRequest, db: Session = Depends(get_db)) -> IngestResponse:
+@router.post("/ingest/events", response_model=IngestResponse)
+def ingest_events(
+    body: IngestRequest, db: Session = Depends(get_db), _: Principal = Depends(require("ingest:write"))
+) -> IngestResponse:
     return _ingest(db, body.records, body.source, body.parser, body.options)
 
 
@@ -69,13 +72,14 @@ def parse_upload(content: bytes, parser: str) -> list[Any]:
     return records
 
 
-@router.post("/ingest/file", response_model=IngestResponse, dependencies=[Depends(require_writer)])
+@router.post("/ingest/file", response_model=IngestResponse)
 async def ingest_file(
     file: UploadFile = File(...),
     source: str = Form(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_.:\-]+$"),
     parser: str = Form("native", pattern=r"^(native|sshd|winsec)$"),
     year: int | None = Form(None, ge=1990, le=2100),
     db: Session = Depends(get_db),
+    _: Principal = Depends(require("ingest:write")),
 ) -> IngestResponse:
     limit = get_settings().max_upload_bytes
     content = await file.read(limit + 1)  # read one byte past the limit to detect oversize files
@@ -87,10 +91,12 @@ async def ingest_file(
     return _ingest(db, records, source, parser, {"year": year} if year else {})
 
 
-@router.post("/synthetic/generate", dependencies=[Depends(require_writer)])
+@router.post("/synthetic/generate")
 def synthetic(body: SyntheticRequest, db: Session = Depends(get_db),
-              actor: str = Depends(analyst_name)) -> dict[str, Any]:  # fmt: skip
+              p: Principal = Depends(require("synthetic:generate"))) -> dict[str, Any]:  # fmt: skip
     """Generate the seeded attack scenario and ingest it through the real parsers."""
+    if not get_settings().allow_synthetic:
+        raise HTTPException(403, "synthetic data generation is disabled on this deployment")
     start = None
     if body.anchor == "now":
         # Anchor the 10-hour scenario so it ends roughly now; dashboards then look "live".
@@ -101,7 +107,7 @@ def synthetic(body: SyntheticRequest, db: Session = Depends(get_db),
     for records, parser in ((sc.native, "native"), (sc.sshd, "sshd"), (sc.winsec, "winsec")):
         if records:
             batches[parser] = _ingest(db, records, f"synthetic-{parser}", parser, {"year": year}).model_dump()
-    audit.record(db, actor=actor, action="synthetic.generated", target_type="system", target_id="synthetic",
+    audit.record(db, actor=p.actor, action="synthetic.generated", target_type="system", target_id="synthetic",
                  details={"seed": body.seed, "records": sc.total_records})  # fmt: skip
     db.commit()
     run_id = jobs.submit("detect_correlate", jobs.detect_and_correlate) if body.run_pipeline else None
@@ -109,6 +115,8 @@ def synthetic(body: SyntheticRequest, db: Session = Depends(get_db),
 
 
 @router.get("/ingest/batches", response_model=list[BatchOut])
-def list_batches(limit: int = 100, db: Session = Depends(get_db)) -> list[IngestBatch]:
+def list_batches(
+    limit: int = 100, db: Session = Depends(get_db), _: Principal = Depends(require("events:read"))
+) -> list[IngestBatch]:
     stmt = select(IngestBatch).order_by(IngestBatch.seq.desc()).limit(min(max(limit, 1), 1000))
     return list(db.scalars(stmt))

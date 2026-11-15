@@ -20,14 +20,14 @@ from sqlalchemy import update
 from app.config import get_settings
 from app.db import session_factory
 from app.integrity.provenance import canonical_json, record_hash, sha256_hex
-from app.main import create_app
 from app.models import Event
 
 
 @pytest.fixture()
-def client(db_url: str) -> Iterator[TestClient]:
-    with TestClient(create_app()) as c:
-        yield c
+def client(admin_client: TestClient) -> Iterator[TestClient]:
+    # v2: every endpoint requires a session. These end-to-end tests run as an administrator;
+    # role restrictions are covered by test_rbac_matrix.py and test_auth.py.
+    yield admin_client
 
 
 @pytest.fixture()
@@ -145,7 +145,7 @@ def test_ollama_analysis_review_gate_and_audit(client: TestClient, seeded: dict[
     clear_ref = next(e for e in client.get(f"/api/investigations/{inv}/timeline").json()["events"]
                      if e["event_type"] == "log.cleared")["id"]  # fmt: skip
     _mock_ollama(monkeypatch, HALLUCINATING_OUTPUT.replace("__CLEAR__", clear_ref))
-    r = client.post(f"/api/investigations/{inv}/analyses", json={"engine": "ollama"}, headers={"X-Analyst": "dana"})
+    r = client.post(f"/api/investigations/{inv}/analyses", json={"engine": "ollama"})
     assert r.status_code == 200, r.text
     a = r.json()
     assert a["engine"] == "ollama" and a["status"] == "pending_review"
@@ -161,11 +161,10 @@ def test_ollama_analysis_review_gate_and_audit(client: TestClient, seeded: dict[
     assert no_note.status_code == 422  # overriding the engine requires a justification
     for c in unsafe:
         rr = client.post(f"/api/analyses/{a['id']}/claims/{c['id']}/review",
-                         json={"decision": "reject", "note": "not supported by evidence"}, headers={"X-Analyst": "dana"})  # fmt: skip
+                         json={"decision": "reject", "note": "not supported by evidence"})  # fmt: skip
         assert rr.json()["review_status"] == "rejected"
-    ok = client.post(f"/api/analyses/{a['id']}/review", json={"decision": "approve", "note": "lgtm"},
-                     headers={"X-Analyst": "dana"}).json()  # fmt: skip
-    assert ok["status"] == "approved" and ok["reviewed_by"] == "dana"
+    ok = client.post(f"/api/analyses/{a['id']}/review", json={"decision": "approve", "note": "lgtm"}).json()
+    assert ok["status"] == "approved" and ok["reviewed_by"] == "admin@example.test"
     assert client.get(f"/api/investigations/{inv}").json()["approved_analysis_id"] == a["id"]
     assert client.post(f"/api/analyses/{a['id']}/review", json={"decision": "reject"}).status_code == 409
 
@@ -239,21 +238,6 @@ def test_tampering_is_reported_by_verify_endpoint(client: TestClient, seeded: di
     assert not rep["ok"]
     assert any(i["target"] == victim.id for i in rep["ledger"]["issues"])
     assert client.get(f"/api/events/{victim.id}/verify").json()["ok"] is False
-
-
-def test_api_token_protects_writes(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TRACELAYER_API_TOKEN", "s3cret-token")
-    get_settings.cache_clear()
-    with TestClient(create_app()) as c:
-        body = {"source": "x", "records": [{"timestamp": "2026-11-03T10:00:00Z", "event_type": "dns.query"}]}
-        assert c.post("/api/ingest/events", json=body).status_code == 401
-        assert c.post("/api/ingest/events", json=body, headers={"Authorization": "Bearer wrong"}).status_code == 401
-        assert (
-            c.post("/api/ingest/events", json=body, headers={"Authorization": "Bearer s3cret-token"}).status_code == 200
-        )
-        assert c.get("/api/events").status_code == 200  # reads stay open
-        assert c.post("/api/pipeline/runs", headers={"X-Analyst": "<script>"}).status_code in (400, 401)
-    get_settings.cache_clear()
 
 
 def test_security_headers_and_latency_telemetry(client: TestClient) -> None:
