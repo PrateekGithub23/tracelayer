@@ -4,17 +4,21 @@ What TraceLayer v2 does **not** do, or does only partially. Each item links to t
 
 ## Data and detection
 
-- **No enterprise production data.** Evaluation uses a seeded synthetic scenario and two small OTRF
+- **No enterprise production data.** Evaluation uses a seeded synthetic scenario and five small OTRF
   *lab* datasets (one attack window each, little benign background). Detection quality on a real network
   is unmeasured. ([REAL_WORLD_DATA_EVALUATION.md](REAL_WORLD_DATA_EVALUATION.md))
 - **No false-positive rate on real data.** The public datasets have technique-level labels only and no
   benign baseline, so precision, F1 and FP rates are deliberately not reported for them.
-- **Small held-out samples.** Real-data generalisation rests on one held-out dataset (n = 1 technique);
-  the integrity engine's held-out set has 40 claims.
-- **Schema coverage.** About 97% of real Windows events map to `other` (process access, registry, image
-  load and WFP events are kept raw but are not typed or detectable). One adapter (OTRF/NXLog Windows)
-  exists; Zeek, firewall and cloud logs do not.
-- **11 rules** covering a handful of ATT&CK techniques; no Sigma import, no ML.
+- **Small held-out samples.** Real-data generalisation rests on a handful of fresh datasets (one technique
+  each); the integrity engine's held-out sets have 40 (v2) and 42 (v3) claims.
+- **Schema coverage (improved in v3).** On the five OTRF datasets, 97.7–99.8% of events are fully
+  normalised (v2: 3.5% typed). Coverage is per adapter: only Windows event logs exported by NXLog/OTRF
+  have a v3 adapter. Zeek, firewall, cloud and Linux audit logs do not. Some Windows events remain raw-only
+  (Kerberos 4769, scheduled tasks, Sysmon 2/23). Class names are OCSF-inspired; the output is **not**
+  OCSF-compliant.
+- **13 rules**, covering a small set of ATT&CK techniques; no discovery rule (the T1069 control dataset was
+  missed), no Sigma import, no ML. Two v3 rules were validated on one fresh dataset each: evidence that
+  they work, not a coverage or false-positive rate.
 
 ## Evidence Integrity Engine
 
@@ -23,13 +27,20 @@ What TraceLayer v2 does **not** do, or does only partially. Each item links to t
 - Times without a timezone are read as UTC (flagged for review); ambiguous abbreviations (IST, AST) are rejected.
 - The engine checks what the *cited* evidence shows. It cannot judge whether the evidence itself is
   truthful (an attacker who controls logs controls evidence).
-- The held-out set is not perfectly independent: its baseline run revealed failure categories. The
-  official result (39/40) and the post-hoc result (40/40) are reported separately. ([AI_EVALUATION.md](AI_EVALUATION.md))
+- The held-out sets are not perfectly independent: each baseline run revealed failure categories that
+  the next dev set targeted. Official results (v2 39/40, v3 40/42) and post-hoc results are reported
+  separately. ([AI_EVALUATION.md](AI_EVALUATION.md))
+- Identity swaps ("jsmith did X" when the evidence shows alice) are *unsupported*, not *contradictory*:
+  a deliberate semantic choice that one frozen held-out label disagrees with.
+- Appeals to authority are recognised by a phrase list; new phrasings ("the CISO has reviewed …") can be
+  classified as a dismissal instead. They are still rejected.
 
 ## AI
 
-- llama3.2:3b produces unsafe claims at a high rate (57% of claims in the benchmark) and takes ~19 s per
-  analysis. It is a drafting aid that requires review, not an analyst.
+- llama3.2:3b writing freely produced unsafe claims at a high rate (57–63% of claims). Grounded mode (v3
+  default) reduces this to ~3%, but is **less complete**: it only restates facts the deterministic stage
+  extracted, and on thin cases the model wrote few useful claims (detection coverage 58% vs 65% free-form,
+  93% deterministic). Either way, the model is a drafting aid that requires review.
 - One generation at a time; no streaming, cancellation or queueing.
 - The public demo cannot generate analyses or validate arbitrary text; it shows real pre-recorded results.
 
@@ -55,10 +66,13 @@ What TraceLayer v2 does **not** do, or does only partially. Each item links to t
 - No free host offers persistent PostgreSQL plus an API at $0 without a card, so the full application is
   local-only and the public artifact is a read-only static demo. ([DEPLOYMENT.md](DEPLOYMENT.md))
 - CI has been validated locally (every job's steps run on this machine, and the workflows pass
-  `actionlint`) but has **not run on GitHub**, because no remote repository exists yet.
+  `actionlint`) but has **not run on GitHub**, because no remote repository exists yet. It will be
+  confirmed only after publication.
+- Script-heavy telemetry ingests more slowly (~2.8k events/s parse rate on the Mimikatz dataset), because
+  every PowerShell script is scanned for prompt injection.
 
 ## UI
 
-- Dark theme only; there is no light theme.
-- Saved-filter naming and pin notes use browser prompts rather than custom dialogs.
+- Dark theme only. A light theme was considered and not added: accent colours are tuned for dark
+  surfaces across ~40 components, and a clean light theme needs a token refactor, not a quick switch.
 - Accessibility work covered labels, focus, roles and a skip link, but no screen-reader audit was done.

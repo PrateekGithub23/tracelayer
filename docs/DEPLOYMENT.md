@@ -44,13 +44,47 @@ Demo). No server code runs anywhere.
 
 ### Publishing (requires your explicit decision; nothing has been published)
 
-1. Review the repository (`make secrets-scan`, already clean), then create a **public** GitHub repository and push.
-2. Settings → Pages → Source: **GitHub Actions**.
-3. Actions → **deploy-demo** → *Run workflow* (manual only). It builds with the correct base path
-   (`https://<user>.github.io/<repo>/`), scans the output for secrets and publishes it.
-4. Add the URL to the README and to `VITE_DEMO_URL` if you want the real app's login page to link to it.
+Prerequisites: a free GitHub account, and `gh` (GitHub CLI) authenticated as you (`gh auth login`).
 
-To refresh the demo data: `make demo-snapshot OTRF=path/to/otrf.zip LLM=1`, review the diff, commit, and run the workflow.
+```bash
+# 1. Final local checks (all must pass)
+make test lint eval secrets-scan audit-deps
+cd frontend && npm run build:demo && npx playwright test -c playwright.demo.config.ts && cd ..
+
+# 2. Create the public repository and push the existing history (no squash, no rewrite)
+gh repo create tracelayer --public --source . --remote origin \
+  --description "Evidence-first security investigation platform: local LLM drafts, deterministic verification of every claim."
+git push -u origin main
+
+# 3. Watch hosted CI; it must be green before deploying
+gh run watch --exit-status
+
+# 4. Enable Pages with GitHub Actions as the source, then deploy manually
+gh api -X POST repos/{owner}/tracelayer/pages -f build_type=workflow
+gh workflow run deploy-demo.yml && gh run watch --exit-status
+```
+
+The demo is served at `https://<user>.github.io/tracelayer/`. The deploy job builds for exactly that
+sub-path, runs the Playwright suite against that build (asserting it only loads its own files), runs
+gitleaks on the history and the built output, and refuses to publish secret-looking or internal-URL
+content. Optional: add a required reviewer to the `github-pages` environment (Settings → Environments).
+
+### Verifying a deployment
+
+1. Open the URL in a private window and choose **Start the guided scenario**. All eight steps should work.
+2. Developer tools → Network: every request goes to `<user>.github.io/tracelayer/…`, with none to
+   `/api`, `localhost` or any other host.
+3. Refresh on a deep link (e.g. `/tracelayer/investigations`). It should load: `404.html` is the SPA fallback.
+
+### Rollback
+
+- **Redeploy an earlier version:** Actions → deploy-demo → *Run workflow* → choose an earlier tag or
+  commit (`gh workflow run deploy-demo.yml --ref <tag>`). Pages serves the last successful deployment until a
+  new one succeeds, so a failed deploy never takes the site down.
+- **Take the demo offline:** Settings → Pages → *Unpublish site* (or `gh api -X DELETE repos/{owner}/tracelayer/pages`).
+- **A secret was published by mistake:** rotate it first (SECURITY.md → Secret rotation), unpublish,
+  then remove it from history with `git filter-repo`. A force-push alone is not enough, because forks and
+  caches may keep copies.
 
 ## Option C: temporarily exposing your laptop (not implemented)
 

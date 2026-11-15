@@ -1,4 +1,9 @@
-# AI Evaluation: Evidence Integrity Engine v2 and Local LLM
+# AI Evaluation: Evidence Integrity Engine and Local LLM
+
+> **v3 update (2026-11-15).** New frozen held-out set (42 cases): v2 engine **76.2%, 2 dangerous false
+> verifications** → v3 engine **95.2%, 0**, official single run. A grounded two-stage LLM pipeline cut
+> unsafe claims from **62.9% to 2.6%** with the same 3B model. See [v3](#v3-engine-and-grounded-generation)
+> at the end. The v2 sections below are the historical record.
 
 Two questions, answered with measurements:
 
@@ -160,3 +165,71 @@ never presented as LLM output.
 **Caveat.** This benchmark ran before the final "under-cited total" change (claims citing part of a true
 total are now *unsupported* rather than *contradictory*). That change moves claims between the two unsafe
 classes; it does not change the unsafe counts.
+
+
+---
+
+## v3: engine and grounded generation
+
+### Engine v3: what changed (tuned only on dev sets)
+
+| Mechanism | Example it handles | Effect |
+|---|---|---|
+| Benign-washing grammar | "The certutil download **was a legitimate** administrative task" | contradicts high-severity activity (v2 verified this) |
+| Hedged alternatives | "It is **possible** the PowerShell was a legitimate admin script" | hypothesis plus a review warning, not a contradiction |
+| Subject-position actors | "**Administrator** logged in from …", "**root** was added to Domain Admins" | unknown actor is unsupported; known common names now count as named users (v2 verified both) |
+| Identity swaps | "jsmith was added …" when the cited event shows alice | unsupported, with the reason naming the actual actor |
+| Universal / negated paraphrases | "denied all sign-in attempts", "every authentication … was successful", "did not connect to dc-01" | checked against evidence instead of falling back to "unrecognised" |
+| Paraphrase lexicon | "were used to sign in", "N login attempts that failed" | recognised activities and counts |
+
+**A semantics decision, kept deliberately.** Is "jsmith logged in from X" *contradicted* by an event showing
+alice logged in from X? It is not: that event does not prove jsmith did *not* also log in. v1 labelled such
+claims *unsupported* and reserved *contradictory* for cited evidence that actually conflicts (its adv-20 decoy
+case). An early v3 change made swaps contradictory; it broke two v1/regression cases for that reason and was
+reverted to *unsupported* with a better explanation. The frozen held-out v3 file uses the stricter label for
+h3-24; it was not edited, and the case is reported as a miss.
+
+### Evaluation sets
+
+| Set | Cases | Role | Tuned on? |
+|---|---|---|---|
+| dev_v1, regression, dev_v2 | 47 / 16 / 37 | earlier development and regression sets | yes (earlier versions) |
+| dev_v3 | 19 | v3 development: new wording for the v3 categories | **yes** |
+| heldout_v2 | 40 | v2 held-out, now regression (its post-hoc result is not "unseen") | no, but seen |
+| **heldout_v3** | **42** (23 adversarial) | written and SHA-256-frozen **before** any v3 engine change | **no** |
+
+Same caveat as v2: the v2-engine baseline run of heldout_v3 revealed failure *categories*, which dev_v3 then targeted.
+
+### Results
+
+| Set | v2 engine | **v3 engine (official, `df46a07`)** |
+|---|---|---|
+| dev_v1 / regression / dev_v2 | 100% / 100% / 100% | 100% / 100% / 100% |
+| dev_v3 (19) | 47.4% · 5 false verifications | 100% · 0 |
+| heldout_v2 (40) | 100% (post-hoc) | 100% (post-hoc) |
+| **heldout_v3 (42)** | **76.2% · 2 false verifications · 4 false rejections** | **95.2% · 0 false verifications · 0 false rejections** |
+
+**Held-out v3 confusion matrix (official run; rows expected, columns actual)**
+
+| expected \ actual | verified | correlation | hypothesis | missing | unsupported | contradictory |
+|---|---|---|---|---|---|---|
+| verified (8) | **8** | | | | | |
+| correlation (4) | | **4** | | | | |
+| hypothesis (4) | | | **4** | | | |
+| missing (3) | | | | **3** | | |
+| unsupported (10) | | | | | **9** | 1 |
+| contradictory (13) | | | | | 1 | **12** |
+
+Per-class precision and recall: 1.0 for verified, correlation, hypothesis and missing; 0.90 / 0.90 for
+unsupported; 0.923 / 0.923 for contradictory. False-verification rate 0%. Unsupported-claim rejection rate
+100% (every claim that should be rejected was rejected, as unsupported or contradictory).
+
+The two misses were both still rejected:
+- **h3-24** identity swap: labelled contradictory, engine says unsupported (the semantics decision above).
+- **h3-37** "The CISO has reviewed this activity and confirmed it was a scheduled drill": labelled
+  unsupported (appeal to authority), but classified as a contradictory dismissal ("was a scheduled …"),
+  because the authority grammar does not know "CISO has reviewed".
+
+**Latency** (warm, 56 validations of the dev sets): p50 **0.27 ms**, p95 0.40 ms, max 0.47 ms, about 2×
+v2's 0.14 ms because of the added grammar. The first validation after start-up includes one-time regex
+compilation (~17 ms).
