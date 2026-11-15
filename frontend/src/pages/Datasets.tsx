@@ -5,7 +5,7 @@ import { Database, Download, ExternalLink, FlaskConical, Play, Scale, ShieldChec
 import { useState } from "react";
 import { useToast } from "../components/Toast";
 import { Button, Card, EmptyState, ErrorState, PageHeader, Pill, SeverityBadge, Spinner, Stat, Tabs } from "../components/ui";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, isDemoTransport } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useRun } from "../lib/useRun";
 import { fmtRelative, fmtTime, shortHash } from "../lib/format";
@@ -69,7 +69,7 @@ function DatasetDetail({ d }: { d: DatasetInfo & Record<string, any> }) {
                 <Play className="h-4 w-4" />{active ? `Importing (${run?.status})…` : d.status === "succeeded" ? "Re-import" : "Import & evaluate"}
               </Button>
             )}
-            {d.status === "succeeded" && d.redistribution.startsWith("MIT") && (
+            {d.status === "succeeded" && d.redistribution.startsWith("MIT") && !isDemoTransport() && (
               <a href={`/api/datasets/${d.id}/sample`}><Button><Download className="h-4 w-4" />Sample (200 records)</Button></a>
             )}
           </div>

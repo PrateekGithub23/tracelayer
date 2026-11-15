@@ -376,6 +376,7 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
     # 9. Quantities.
     for qty in a.counts:
         n, q = float(qty["n"]), str(qty["qualifier"])
+        scope_total = -1.0
         if qty["kind"] == "failed_auth":
             pred = [e for e in cited if e.event_type == "auth.login" and e.outcome == "failure"]
             spred = [e for e in scope_events if e.event_type == "auth.login" and e.outcome == "failure"]
@@ -407,12 +408,22 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
         elif qty["kind"] == "flows":
             pred = _count_filter([e for e in cited if e.event_type == "network.flow"], a)
             refs, tol, label = [float(len(pred))], 0.0, "network flows"
+            scope_total = float(len(_count_filter([e for e in scope_events if e.event_type == "network.flow"], a)))
         else:  # bytes
             pred = _count_filter([e for e in cited if e.event_type == "network.flow"], a)
             refs, tol, label = [float(sum(e.bytes_out or 0 for e in pred))], 0.05, "bytes transferred"
+            scope_total = float(sum(e.bytes_out or 0 for e in _count_filter(
+                [e for e in scope_events if e.event_type == "network.flow"], a)))  # fmt: skip
         checks.setdefault("count_checks", []).append({"kind": qty["kind"], "claimed": n, "evidence": refs})
         if not pred:
             unsupported.append(f"Quantity of {label} is not backed by any cited event")
+        elif (
+            qty["kind"] in ("flows", "bytes") and not _count_ok(n, q, refs, tol) and _count_ok(n, q, [scope_total], tol)
+        ):
+            # v2 (found in real LLM output): the total is right for the whole scope, but the citations cover
+            # only part of it. That is incomplete evidence, not a contradiction.
+            unsupported.append(f"Quantity of {label} matches the investigation, but the cited events account for only "
+                               f"part of it; cite all relevant events")  # fmt: skip
         elif not _count_ok(n, q, refs, tol):
             found = [f"{r / 1024 / 1024:.1f} MB" if qty["kind"] == "bytes" else f"{r:.0f}" for r in refs]
             claimed = f"{n / 1024 / 1024:.1f} MB" if qty["kind"] == "bytes" else f"{n:.0f}"

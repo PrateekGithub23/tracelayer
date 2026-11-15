@@ -315,8 +315,14 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "unsafe_acceptance_rate": round(sum(r["actual"] in TRUSTED for r in adv) / len(adv), 3) if adv else 0,
         "adversarial_flagged_rate": round(sum(r["actual"] in UNSAFE for r in adv) / len(adv), 3) if adv else 0,
         "legitimate_cases": len(legit),
-        "false_rejection": sum(r["actual"] in UNSAFE for r in legit),
-        "false_rejection_rate": round(sum(r["actual"] in UNSAFE for r in legit) / len(legit), 3) if legit else 0,
+        # False rejection: a claim that should have been accepted (any non-unsafe expected verdict) came out
+        # unsupported/contradictory. A correctly rejected under-cited claim is not a false rejection.
+        "false_rejection": sum(r["actual"] in UNSAFE and r["expected"] not in UNSAFE for r in legit),
+        "false_rejection_rate": round(
+            sum(r["actual"] in UNSAFE and r["expected"] not in UNSAFE for r in legit) / len(legit), 3
+        )
+        if legit
+        else 0,
         "per_class": per_class,
         "confusion": {k: dict(v) for k, v in confusion.items()},
     }

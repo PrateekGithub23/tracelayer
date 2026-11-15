@@ -45,8 +45,12 @@ export default function Walkthrough() {
     const ev = timeline.data?.events ?? [];
     const dets = detail.data?.detections ?? [];
     const byRule = (prefix: string) => dets.filter((d) => d.rule_id.startsWith(prefix));
-    const success = ev.find((e) => e.event_type === "auth.login" && e.outcome === "success" && e.src_ip && ev.some((f) => f.outcome === "failure" && f.src_ip === e.src_ip));
-    const fails = ev.filter((e) => e.event_type === "auth.login" && e.outcome === "failure" && e.src_ip === success?.src_ip);
+    // The brute-force source is the address with the most failed logins; the story starts with its first success.
+    const failCount = new Map<string, number>();
+    for (const e of ev) if (e.event_type === "auth.login" && e.outcome === "failure" && e.src_ip) failCount.set(e.src_ip, (failCount.get(e.src_ip) ?? 0) + 1);
+    const attacker = [...failCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const success = ev.find((e) => e.event_type === "auth.login" && e.outcome === "success" && e.src_ip === attacker);
+    const fails = ev.filter((e) => e.event_type === "auth.login" && e.outcome === "failure" && e.src_ip === attacker);
     const procs = ev.filter((e) => e.event_type === "process.start" && e.host === success?.host && success && e.timestamp >= success.timestamp).slice(0, 4);
     const priv = ev.filter((e) => e.event_type === "iam.change");
     const llm = (analyses.data ?? []).find((a) => a.engine === "ollama");

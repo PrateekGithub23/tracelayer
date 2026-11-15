@@ -83,5 +83,7 @@ def build_dev_v2(main: Scope, ssh: Scope, truth: dict[str, Any], case_cls: Any) 
         C("dv2-33", "mixed_conclusion", True, f"{n_fail} failed logins from {atk} show the attacker is based in Russia.", fails, UNSUPPORTED),
         C("dv2-34", "contradictory_sources", True, f"Every login attempt from {atk} failed.", fails[:4] + success, CONTRADICTORY),
         C("dv2-35", "temporal_reversal_paraphrase", True, f"{victim} received Domain Admins rights only after the Security log was wiped on dc-01.", priv + clear, CONTRADICTORY, "correlation"),
+        # Found in real llama3.2:3b output: a true total cited with only some of its events -> incomplete, not false.
+        C("dv2-37", "under_cited_total", False, f"Host file-01 sent {mb:.1f} MB to {exf}.", flows[:6], UNSUPPORTED),
         C("dv2-36", "kind_laundering_time", True, f"Possibly {victim} was granted Domain Admins at {(priv_ev.timestamp - timedelta(hours=4)):%H:%M} UTC.", priv, CONTRADICTORY, "hypothesis"),
     ]  # fmt: skip

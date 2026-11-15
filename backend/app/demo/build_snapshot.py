@@ -240,7 +240,7 @@ def scrub(snapshot: dict[str, Any]) -> dict[str, Any]:
 
     me = snapshot["responses"].get("/auth/me")
     if me:
-        me["csrf_token"] = "demo-transport-does-not-use-csrf"
+        me["csrf_token"] = "demo-transport-does-not-use-csrf"  # noqa: S105 - a placeholder that replaces a real token
 
     def walk(v: Any) -> tuple[Any, bool]:
         if isinstance(v, str):

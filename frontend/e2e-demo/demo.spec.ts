@@ -27,6 +27,7 @@ test("guided scenario walks through all eight steps with real data", async ({ pa
     "Privilege modification", "The AI drafts the investigation", "Every sentence is checked", "The analyst decides", "The final incident report"];
   for (const [i, t] of titles.entries()) {
     await expect(page.getByText(t)).toBeVisible();
+    if (i === 0) await expect(page.locator("#main").getByText("203.0.113.45").first()).toBeVisible();  // the brute-force source, not noise
     if (i === 1) await expect(page.getByText(/failed logins/).first()).toBeVisible();
     if (i === 4) await expect(page.locator("#main").getByText("llama3.2:3b")).toBeVisible();
     if (i < titles.length - 1) await page.getByRole("button", { name: "Next" }).click();
