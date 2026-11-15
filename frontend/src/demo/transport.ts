@@ -32,7 +32,7 @@ const UNSAFE = ["unsupported_claim", "contradictory_finding"];
 let snap: Snapshot | null = null;
 let loading: Promise<Snapshot> | null = null;
 const state = {
-  signedIn: true,
+  signedIn: false, // visitors start on the demo landing screen, which explains what they are looking at
   invs: new Map<string, Json>(),
   details: new Map<string, Json>(),
   activity: new Map<string, Json[]>(),
