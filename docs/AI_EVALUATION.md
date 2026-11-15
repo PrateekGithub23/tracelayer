@@ -233,3 +233,42 @@ The two misses were both still rejected:
 **Latency** (warm, 56 validations of the dev sets): p50 **0.27 ms**, p95 0.40 ms, max 0.47 ms, about 2×
 v2's 0.14 ms because of the added grammar. The first validation after start-up includes one-time regex
 compilation (~17 ms).
+
+### Grounded two-stage generation (v3)
+
+**Pipeline.** (1) The deterministic analyst extracts candidate facts; the engine keeps only verified or
+correlated ones as a numbered fact table (F1…Fn) with their event citations. (2) The model sees *only* the
+fact table, never raw log text, and must reference facts by id. (3) Citations are derived server-side from
+the referenced facts; unknown ids are dropped and counted, so the model **cannot introduce a citation**.
+(4) Every claim is verified as usual; claims that come out unsupported or contradictory are rejected by the
+pipeline (a recorded system decision, with the reason); hypotheses and missing-evidence claims go to the analyst.
+
+**Benchmark.** Same model (`llama3.2:3b`, Q4_K_M), same three investigations (synthetic intrusion,
+synthetic SSH brute force, OTRF WMIC backdoor), five runs per mode, same scoring engine
+(`benchmarks/results/llm-v3-freeform-vs-grounded-idle.json`; the earlier run, made while other tests
+were executing, is kept as `llm-v3-freeform-vs-grounded.json`).
+
+| Metric (mean per analysis) | Free-form | **Grounded** | Deterministic |
+|---|---|---|---|
+| Valid JSON | 15/15 | 15/15 | n/a |
+| Unsafe-claim rate | 55.4% | **2.9%** | 0% |
+| Unsafe claims | 6.47 | **0.40** | 0 |
+| Fabricated citations | 7.93 | **0** | 0 |
+| Citation validity | 66.3% | **100%** | 99.8% |
+| Trusted claims (verified/correlated) | 4.27 | **6.13** | 7.0 |
+| Claims needing analyst review | 7.27 | **1.47** | 2.0 |
+| Detection coverage (completeness) | 57.6% | 57.0% | 93.3% |
+| Integrity score | 40.3 | **75.7** | 86.8 |
+| Latency mean / p95 / stdev | 32.1 s / 40.1 s / 5.2 s | 22.7 s / 45.5 s / 16.5 s | 2 ms |
+
+**Reading it.**
+- Grounding removes the failure mode that dominated free-form output: invented citations went from ~8 per
+  analysis to 0 by construction, and the unsafe-claim rate fell about 19× (55% → 3%).
+- **Completeness did not improve.** Both LLM modes cover about 57% of detections against 93% for the
+  deterministic analyst; the busy-machine run showed grounded slightly *lower* (57.6% vs 64.5%). The
+  model omits facts it was given, especially on the thin SSH case.
+- Grounded is faster on average (shorter outputs) but more variable; latencies are *not* comparable to
+  v2's 18.6 s figure, because the evidence packs differ (v3 events carry richer fields) and machine load
+  differed. Only within-run comparisons are claimed.
+- **Decision:** grounded is the default LLM mode in v3; the deterministic analyst remains fully operational
+  and is still the most complete and reliable generator. The model's value is narrative, not facts.

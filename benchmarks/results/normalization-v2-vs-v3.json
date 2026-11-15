@@ -1,0 +1,157 @@
+{
+  "datasets": {
+    "otrf-sdwin-200914080546": {
+      "records": 12278,
+      "otrf_windows": {
+        "events_per_sec": [
+          14442,
+          15161,
+          16007
+        ],
+        "coverage": {
+          "raw_only": 96.51,
+          "typed_unassessed": 3.49,
+          "rejected": 0
+        },
+        "median_events_per_sec": 15161
+      },
+      "otrf_windows.v3": {
+        "events_per_sec": [
+          16636,
+          18316,
+          19867
+        ],
+        "coverage": {
+          "full": 99.59,
+          "raw_only": 0.37,
+          "partial": 0.03,
+          "rejected": 0
+        },
+        "median_events_per_sec": 18316
+      }
+    },
+    "otrf-sdwin-200921001437": {
+      "records": 6383,
+      "otrf_windows": {
+        "events_per_sec": [
+          20840,
+          21284,
+          21276
+        ],
+        "coverage": {
+          "raw_only": 98.32,
+          "typed_unassessed": 1.68,
+          "rejected": 0
+        },
+        "median_events_per_sec": 21276
+      },
+      "otrf_windows.v3": {
+        "events_per_sec": [
+          10797,
+          12360,
+          12720
+        ],
+        "coverage": {
+          "full": 97.74,
+          "raw_only": 0.7,
+          "partial": 1.55,
+          "rejected": 0
+        },
+        "median_events_per_sec": 12360
+      }
+    },
+    "otrf-sdwin-200722001847": {
+      "records": 657,
+      "otrf_windows": {
+        "events_per_sec": [
+          18072,
+          18408,
+          18507
+        ],
+        "coverage": {
+          "typed_unassessed": 37.9,
+          "raw_only": 62.1,
+          "rejected": 0
+        },
+        "median_events_per_sec": 18408
+      },
+      "otrf_windows.v3": {
+        "events_per_sec": [
+          7724,
+          7642,
+          7711
+        ],
+        "coverage": {
+          "full": 99.24,
+          "raw_only": 0.76,
+          "rejected": 0
+        },
+        "median_events_per_sec": 7711
+      }
+    },
+    "otrf-sdwin-190518202151": {
+      "records": 6026,
+      "otrf_windows": {
+        "events_per_sec": [
+          14159,
+          14377,
+          14386
+        ],
+        "coverage": {
+          "raw_only": 94.56,
+          "typed_unassessed": 5.44,
+          "rejected": 0
+        },
+        "median_events_per_sec": 14377
+      },
+      "otrf_windows.v3": {
+        "events_per_sec": [
+          2745,
+          2754,
+          2570
+        ],
+        "coverage": {
+          "full": 99.8,
+          "raw_only": 0.18,
+          "partial": 0.02,
+          "rejected": 0
+        },
+        "median_events_per_sec": 2745
+      }
+    },
+    "otrf-sdwin-190319020147": {
+      "records": 884,
+      "otrf_windows": {
+        "events_per_sec": [
+          22774,
+          22472,
+          15686
+        ],
+        "coverage": {
+          "raw_only": 96.72,
+          "typed_unassessed": 3.28,
+          "rejected": 0
+        },
+        "median_events_per_sec": 22472
+      },
+      "otrf_windows.v3": {
+        "events_per_sec": [
+          8470,
+          7372,
+          6307
+        ],
+        "coverage": {
+          "full": 99.66,
+          "raw_only": 0.34,
+          "rejected": 0
+        },
+        "median_events_per_sec": 7372
+      }
+    }
+  },
+  "environment": {
+    "python": "3.12.16",
+    "platform": "macOS-26.3.1-arm64-arm-64bit",
+    "runs": 3
+  }
+}

@@ -73,7 +73,7 @@ attack telemetry, hash-chained evidence, ATT&CK detections and a multi-user case
   detection engine merges late-arriving evidence instead of duplicating alerts.
 - **Performance work with proof:** a 10× ingest slowdown traced to a per-character Python loop; replaced with
   `str.translate`, proven byte-identical on 20,000 random inputs so old evidence still verifies.
-- **Testing:** 120+ backend tests, frontend unit tests, Playwright end-to-end suites against the real API and
+- **Testing:** 119 backend tests, frontend unit tests, Playwright end-to-end suites against the real API and
   the static demo (including a strict "no request leaves the demo's own files" policy). E2E tests found real
   bugs: a missing owner name, and a sub-path reload race.
 - **Decisions not taken:** no Next.js rewrite (no server-side rendering need); no light theme (it needs a
