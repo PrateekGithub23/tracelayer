@@ -9,18 +9,17 @@ engineering judgement: the evaluation methodology, the security model, and the t
 
 ## Resume bullets
 
-- **Built TraceLayer, an open-source security investigation platform (FastAPI, PostgreSQL, React/TypeScript)**
-  that normalises real Windows attack telemetry (97.7–99.8% of OTRF lab events, up from 3.5%) into a
-  hash-chained evidence ledger, with 13 ATT&CK-mapped detections; two new rules each detected their
-  technique on first contact with fresh, independently labelled datasets.
-- **Designed a deterministic "Evidence Integrity Engine" that checks every AI-written claim against the log
-  events it cites,** scoring 95.2% on a frozen 42-case adversarial held-out set (v2 engine: 76.2%) with zero
-  dangerous false verifications in under 0.5 ms per claim, and a grounded generation pipeline that cut a local
-  3B model's unsafe claims from 63% to 3%.
-- **Hardened it for multi-user use:** Argon2id accounts, HttpOnly server-side sessions with CSRF protection,
-  role-based access tested across all 82 API routes, conflict-safe case workflows with reviewer segregation
-  of duties, and evidence tables PostgreSQL itself makes immutable. Shipped a $0 static public demo verified by
-  browser tests that it never contacts a backend.
+- **Built TraceLayer, a security investigation platform (FastAPI, PostgreSQL, React/TypeScript),** with
+  versioned Windows telemetry parsers that fully normalise 97.7–99.8% of events across 5 public OTRF attack
+  datasets (26,228 events; prior parser: 4.4% typed), a SHA-256 hash-chained evidence ledger, and 13 MITRE
+  ATT&CK-mapped detections correlated into investigation timelines and entity graphs.
+- **Designed a deterministic Evidence Integrity Engine that verifies each LLM-generated claim against its cited
+  log events** across six verdict classes, scoring 95.2% on a frozen 42-case adversarial held-out set (prior
+  version: 76.2%) with zero dangerous false verifications; a grounded generation pipeline cut a local Llama 3.2
+  3B model's unsafe claims from 55.4% to 2.9%.
+- **Implemented Argon2id authentication, server-side sessions with CSRF protection, and RBAC verified by tests
+  across all 82 API routes,** plus database-enforced evidence immutability; shipped through GitHub Actions CI
+  (119 backend tests, Playwright E2E, secret and dependency scanning) with a $0 static demo on GitHub Pages.
 
 ## 60-second explanation
 
@@ -79,34 +78,71 @@ attack telemetry, hash-chained evidence, ATT&CK detections and a multi-user case
 - **Decisions not taken:** no Next.js rewrite (no server-side rendering need); no light theme (it needs a
   colour-token refactor); no LLM-as-judge (a judge can hallucinate too).
 
-## LinkedIn launch post (draft)
+## LinkedIn launch post (v3.0.0)
 
-> I just published TraceLayer, an open-source security investigation platform built around one idea:
-> AI can draft an investigation, but it has to prove what it says.
->
-> In my benchmark, a local 3B model produced perfectly valid JSON every time, yet about 60% of its factual
-> claims were unsupported by the evidence. So TraceLayer checks every sentence against the exact log events it
-> cites and blocks approval until an analyst deals with anything unsupported. Constraining the model to write
-> only from verified facts cut unsafe claims to about 3%.
->
-> Under the hood: real public attack telemetry (OTRF), a hash-chained evidence ledger, 13 ATT&CK detections,
-> multi-user case management, and evaluation on frozen held-out sets, all running on a laptop at zero cost.
->
-> Interactive demo (no sign-up): https://prateekgithub23.github.io/tracelayer/ · Code: https://github.com/PrateekGithub23/tracelayer
-> Built with substantial help from an AI coding assistant. The methodology and trade-offs are documented in the repo.
->
-> #cybersecurity #detectionengineering #AI #opensource
+The hook is a real claim from the demo: the free-form llama3.2:3b draft says "Alice successfully brute forced
+admin credentials after 42 failed attempts". Its six citations are failed logins for jsmith, root (3), admin and
+alice, and only one is Alice's. The 42 is the total from 203.0.113.45 across several accounts. The engine marks
+it contradictory ("Claims 42 failed logins; evidence shows 1 / 11", meaning 1 in the citations and 11 in the
+whole case).
 
-## 60–90 second demo video
+> A local LLM wrote me an incident report blaming a user for "42 failed attempts." Only one failed login it
+> cited was theirs. The 42 came from an IP spraying several accounts.
+>
+> I built TraceLayer, an open-source security investigation platform, to catch exactly that.
+>
+> It normalises Windows Security, Sysmon and PowerShell telemetry, hashes every raw record into a
+> tamper-evident ledger, runs 13 MITRE ATT&CK-mapped detections, and correlates related alerts into cases with
+> timelines and entity graphs. FastAPI and PostgreSQL sit behind a React/TypeScript workspace with role-based
+> access and an audit trail.
+>
+> A local Llama 3.2 3B model drafts each investigation. Then a deterministic Evidence Integrity Engine checks
+> every claim against the events it cites: entities, counts, times, outcomes. Claims come out verified,
+> correlated, hypothesis, missing evidence, unsupported or contradicted, and unsafe ones block approval until
+> an analyst decides.
+>
+> On lab and synthetic data:
+> • 95.2% on a frozen 42-case adversarial set, zero dangerous false verifications
+> • Unsafe AI claims cut from 55.4% to 2.9% by letting the model cite only pre-verified facts
+>
+> The hardest part was measuring honestly. My first checker accepted 5 of 24 adversarial claims it had never
+> seen, so I now tune only on development sets and score each frozen test set once.
+>
+> Built with AI-assisted development; methods and limits are in the repo.
+>
+> GitHub: https://github.com/PrateekGithub23/tracelayer
+> Live demo: https://prateekgithub23.github.io/tracelayer/
+>
+> #CyberSecurity #SoftwareEngineering #DetectionEngineering #OpenSource #AI
 
-1. (0–8 s) Demo landing → "Start the guided scenario".
-2. (8–25 s) Steps 1–4: the suspicious sign-in, 42 failed logins from the same IP, endpoint tradecraft, Domain
-   Admins. Click one event to show the raw record and its hash.
-3. (25–35 s) Entity graph tab: the case at a glance.
-4. (35–55 s) Step 5–6: the grounded draft vs the free-form draft's unsafe count; open a rejected claim and read
-   the reason aloud.
-5. (55–70 s) Case header: request review (reviewer must be someone else), then the activity feed.
-6. (70–85 s) Download the incident report; finish on Datasets → Telemetry coverage.
+Sources: held-out v3 `evaluation-v3.json` (`sets.heldout_v3`); unsafe rate `llm-v3-freeform-vs-grounded-idle.json`
+(3 investigations × 5 runs per mode); "5 of 24" `heldout-v2-baseline-v1-engine.json` (`unsafe_acceptance`).
+
+### Carousel (`portfolio/linkedin/`, 3200×2000 PNG)
+
+1. `01-dashboard.png`: security overview (events, detections, investigations, AI claim verdicts).
+2. `02-investigation.png`: the 7-stage case with ATT&CK stages, telemetry blind spots and entity graph.
+3. `03-evidence-integrity.png`: the contradicted "42 failed attempts" claim with its reasons and review controls.
+4. `04-evaluation.png`: v3 results, with every number read from `benchmarks/results/*.json` at render time.
+
+Images 1–3 are unretouched screenshots of the public demo inside a titled frame. Regenerate them with
+`cd frontend && LINKEDIN=1 DEMO_URL=https://prateekgithub23.github.io/tracelayer/ npx playwright test -c playwright.demo.config.ts linkedin`.
+The graph layout is randomised, so pick a clear one with `GRAPH_LAYOUT=<n>` (see `portfolio/linkedin/raw/`).
+
+## 60-second demo video (shot list)
+
+Record the live demo at 1440×900 with the cursor visible and no narration overlay; move slowly and pause about
+1 s after each click.
+
+1. (0–6 s) Overview: hold on the stat tiles and priority investigations.
+2. (6–14 s) Investigations → the 7-stage intrusion: pan across the ATT&CK stage strip and blind spots.
+3. (14–22 s) Timeline tab: drag across the 11:00–12:00 window to zoom; click one failed-login dot.
+4. (22–30 s) Entity graph: click the `203.0.113.45` → `alice` edge to open the exact events in the inspector.
+5. (30–44 s) AI analysis → the `ollama` draft: scroll to the contradicted "42 failed attempts" claim and pause
+   on "Claims 42 failed logins; evidence shows 1 / 11", then on the unsupported transfer claim.
+6. (44–50 s) Analyst decision: show "2 unsafe claim(s) still need a decision", then reject the contradicted claim.
+7. (50–56 s) Switch to the `ollama-grounded` draft: 1 unsafe claim, already auto-rejected.
+8. (56–60 s) Report .md download; end on the repository URL.
 
 ## GitHub repository
 

@@ -2,6 +2,10 @@
 
 **A security investigation platform where AI has to prove what it says.**
 
+**[Live demo](https://prateekgithub23.github.io/tracelayer/)** (no sign-up, runs in your browser) ·
+[Latest release](https://github.com/PrateekGithub23/tracelayer/releases/latest) ·
+[How it works](#architecture) · [Measured results](#measured-results) · [Run it locally](#try-it)
+
 TraceLayer ingests security telemetry into a tamper-evident ledger, detects and correlates attacker
 activity into cases, and lets analysts work those cases together. It also lets an AI (a local LLM or a
 deterministic analyst) draft the investigation, **then checks every sentence against the events it cites**.
@@ -29,7 +33,7 @@ which cut unsafe claims to **~3%**.
 - **Grounded AI generation.** Verified fact table → the model cites fact ids only → citations are derived
   and re-verified → unsafe claims are auto-rejected and recorded. Unsafe claims: 55% free-form → 3% grounded.
 - **Real telemetry.** A versioned Windows adapter (50 Security, Sysmon, PowerShell and WMI event types) with
-  per-event normalisation diagnostics: **97.7–99.8%** of OTRF lab events fully normalised (v2: 3.5% typed),
+  per-event normalisation diagnostics: **97.7–99.8%** of OTRF lab events fully normalised (v2: 4.4% assigned any type),
   re-normalised in place without touching the hash-chained raw evidence. Two new rules (LSASS access, Run
   keys) detected their technique on fresh labelled datasets. [Findings →](docs/REAL_WORLD_DATA_EVALUATION.md)
   · [Rules →](docs/DETECTION_RULES.md)
@@ -74,6 +78,31 @@ and `make dev-ui` (http://localhost:5173).
 natively so it can use the Apple GPU). Without it, everything works with the deterministic analyst.
 
 ## Architecture
+
+```mermaid
+flowchart TB
+    subgraph P["1 · Evidence pipeline"]
+        direction LR
+        A["Security logs<br/>Windows Security · Sysmon<br/>PowerShell · WMI · SSH · JSON"] --> B["Normalisation<br/>versioned parsers,<br/>per-event diagnostics"]
+        B --> C[("Evidence ledger<br/>SHA-256 per record,<br/>Merkle root per batch,<br/>hash chain")]
+        C --> D["Detection<br/>13 ATT&CK-mapped rules"]
+        D --> E["Correlation<br/>shared entities → cases,<br/>timeline, entity graph"]
+    end
+    subgraph V["2 · AI investigation, verified against the ledger"]
+        direction LR
+        F["AI draft<br/>local llama3.2:3b (grounded)<br/>or deterministic analyst"] --> G["Evidence Integrity Engine<br/>each claim vs the events it cites<br/>→ one of six verdicts"]
+        G --> H["Analyst review<br/>unsafe claims block approval;<br/>every decision in the audit chain"]
+    end
+    P --> V
+    classDef engine stroke:#38bdf8,stroke-width:3px
+    class G engine
+```
+
+Raw records are hashed and committed to the ledger at ingest, before any detection runs; the integrity
+engine reads the cited events back from that ledger. Verdicts: verified observation, heuristic correlation,
+AI hypothesis, missing evidence, unsupported claim, contradictory finding.
+
+Deployment view:
 
 ```
 React + TS (Vite) ──/api──► nginx ──► FastAPI (auth · RBAC · cases · ingest · datasets · detection ·
