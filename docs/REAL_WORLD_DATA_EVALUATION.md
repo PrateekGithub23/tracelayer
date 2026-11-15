@@ -228,7 +228,7 @@ rules were committed.
 | **Mimikatz (T1003)** | **1** | **1 / 1** | TL-CRED-001: `powershell.exe` opened `lsass.exe` with `0x1010` |
 | net localgroup (T1069) | 0 | 0 / 1 | **miss**: no discovery rule exists; also shows the new rules stayed silent |
 
-TL-CRED-001 and TL-PERS-002 were committed (`66d5ea8`) **before** their validating datasets were
+TL-CRED-001 and TL-PERS-002 were committed (`459eb26`) **before** their validating datasets were
 downloaded. Across the five datasets, the two new rules fired exactly once each, both times on their
 labelled technique. Five small lab datasets cannot establish a false-positive rate; none is claimed.
 

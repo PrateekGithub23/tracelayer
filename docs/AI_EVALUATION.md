@@ -69,13 +69,13 @@ counted as a mislabel, not a dangerous verification, because neither verdict is 
 Two honest caveats about `heldout_v2`:
 - Its v1-engine baseline run revealed which *categories* failed (not how to fix them), and `dev_v2`
   targets those categories, so it is not perfectly independent of development.
-- It was run once for the official result, at commit `7d83345`. Two later engine changes driven by
+- It was run once for the official result, at commit `7e5f3d0`. Two later engine changes driven by
   **real data** (prose nouns such as "Account creation" read as user names, found on OTRF telemetry,
   and `*.exe` mentions) also fixed its one miss. That later run is reported separately as **post-hoc**.
 
 ### Results
 
-| Set | v1 engine | v2 official (`7d83345`) | v2 current (post-hoc) |
+| Set | v1 engine | v2 official (`7e5f3d0`) | v2 current (post-hoc) |
 |---|---|---|---|
 | dev_v1 (47) | 100% | 100% | 100% |
 | regression (16) | 87.5% | 100% | 100% |
@@ -202,7 +202,7 @@ Same caveat as v2: the v2-engine baseline run of heldout_v3 revealed failure *ca
 
 ### Results
 
-| Set | v2 engine | **v3 engine (official, `df46a07`)** |
+| Set | v2 engine | **v3 engine (official, `0f35c61`)** |
 |---|---|---|
 | dev_v1 / regression / dev_v2 | 100% / 100% / 100% | 100% / 100% / 100% |
 | dev_v3 (19) | 47.4% · 5 false verifications | 100% · 0 |
@@ -272,3 +272,10 @@ were executing, is kept as `llm-v3-freeform-vs-grounded.json`).
   differed. Only within-run comparisons are claimed.
 - **Decision:** grounded is the default LLM mode in v3; the deterministic analyst remains fully operational
   and is still the most complete and reliable generator. The model's value is narrative, not facts.
+
+> **Note on commit hashes.** Before the first publication, the author email on every commit was changed
+> from a local hostname address to a GitHub no-reply address (content and trees unchanged). Hashes in these
+> docs were updated; a few earlier commit *messages* still cite the pre-rewrite hashes:
+> `df46a07` → `0f35c61` (engine v3 official run), `7d83345` → `7e5f3d0` (engine v2 official run),
+> `9734726` → `9987cbd` (v2 benchmark baseline), `0c6be04` → `6c3724e` (v1 baseline),
+> `66d5ea8` → `459eb26` (v3 rules committed before validation data), `6e9b209` → `59461b7`.

@@ -1,6 +1,6 @@
 # TraceLayer v2: Security and Architecture Audit
 
-**Audited revision:** `0c6be04` (v1 baseline) · **Date:** 2026-11-14 · **Status column re-verified against the code:** 2026-11-15 · **Method:** manual review of every
+**Audited revision:** `6c3724e` (v1 baseline) · **Date:** 2026-11-14 · **Status column re-verified against the code:** 2026-11-15 · **Method:** manual review of every
 backend router, model, dependency, the job runner, Docker/nginx configuration, the frontend HTTP client, and
 CI; reproduction of the v1 test suite (58 + 9 passing) and evaluation results; plus a new frozen held-out
 evaluation of the integrity engine.

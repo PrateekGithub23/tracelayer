@@ -33,7 +33,7 @@ tracelayer dataset import <id> --file x.zip   # real-telemetry ingest timing
 ### Reading these honestly
 
 - **The baseline was reproduced before any new claim.** The v1 code itself was benchmarked again on
-  the same machine and PostgreSQL image (git worktree at `0c6be04`): **16,673/s** ingest. So v1's
+  the same machine and PostgreSQL image (git worktree at `6c3724e`): **16,673/s** ingest. So v1's
   recorded 17.8k reflects an earlier environment, and v2's 16.7–17.3k/s is the same performance, not a regression.
 - **Cold vs warm.** The first PostgreSQL run after starting the container measured 12,482/s
   (`postgres-100k-v2-cold.json`); the next two measured 16,728 and 17,273/s. Report the warm range;
@@ -82,8 +82,8 @@ PostgreSQL ~50–150 MB, API ~150–250 MB, nginx under 10 MB; Ollama with llama
 **Method.** MacBook Air (Apple Silicon, 10 cores, 16 GB), Python 3.12.16, PostgreSQL 16.16 in Docker.
 Machine conditions varied during this session: a separately running Docker stack and background processes put the
 load average at ~2–3, and absolute throughput was about half of the earlier v2 session. Comparisons below are
-therefore **paired**: v2 code (commit `9734726`, via a git worktree) and v3 code ran alternately under the same
-conditions. (`9734726` is the v2 pipeline as of the CI commit; the two later v2 commits changed 41 lines
+therefore **paired**: v2 code (commit `9987cbd`, via a git worktree) and v3 code ran alternately under the same
+conditions. (`9987cbd` is the v2 pipeline as of the CI commit; the two later v2 commits changed 41 lines
 of backend code, including one extra validator check, so the claim-validation comparison is approximate.) Absolute numbers from different sessions are not compared.
 
 ### Pipeline, 100k synthetic background events (paired)

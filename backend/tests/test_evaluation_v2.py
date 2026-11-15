@@ -27,7 +27,7 @@ def test_development_and_regression_sets(report: dict[str, Any]) -> None:
 
 
 def test_heldout_v2_recorded_result_does_not_regress(report: dict[str, Any]) -> None:
-    """Recorded once at commit 7d83345: 39/40. This guards against regression; it is not a tuning target."""
+    """Recorded once at commit 7e5f3d0: 39/40. This guards against regression; it is not a tuning target."""
     ho = report["sets"]["heldout_v2"]
     assert ho["cases"] == 40 and ho["accuracy"] >= 0.975 and ho["false_rejection"] == 0
 
