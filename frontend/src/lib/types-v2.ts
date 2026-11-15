@@ -65,6 +65,8 @@ export interface DatasetInfo {
   expected_sha256: string; status: string; event_count: number | null; imported_at: string | null;
   processing_ms: number | null; batch_ids: string[]; field_mapping: { source: string; target: string; note?: string }[];
   results: Record<string, any> | null; local_file_present?: boolean; error?: string | null;
+  role: "development" | "held-out"; techniques: string[]; duplicates?: number | null; rejected?: number | null;
+  archive_sha256?: string | null; import_id?: string | null;
 }
 
 export interface LlmStatus {

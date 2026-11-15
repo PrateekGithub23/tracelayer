@@ -16,3 +16,4 @@ dist/
 *.tsbuildinfo
 frontend/test-results/
 frontend/playwright-report/
+backend/data/

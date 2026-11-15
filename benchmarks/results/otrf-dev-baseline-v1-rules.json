@@ -1,0 +1,157 @@
+{
+  "id": "dsi_e3a5ff90f79cab7b",
+  "status": "succeeded",
+  "error": null,
+  "records": 12278,
+  "accepted": 12278,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 1464.2,
+  "results": {
+    "events": 12278,
+    "event_types": {
+      "auth.login": 26,
+      "dns.query": 11,
+      "file.access": 103,
+      "iam.change": 4,
+      "network.flow": 234,
+      "other": 11850,
+      "process.start": 50
+    },
+    "unmapped_share": 0.9651,
+    "top_unmapped": [
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 10",
+        "count": 1655
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 12",
+        "count": 1496
+      },
+      {
+        "source": "Security 5447",
+        "count": 1430
+      },
+      {
+        "source": "Security 5158",
+        "count": 1366
+      },
+      {
+        "source": "Security 5154",
+        "count": 1299
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 7",
+        "count": 1262
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 13",
+        "count": 1143
+      },
+      {
+        "source": "Security 4658",
+        "count": 617
+      },
+      {
+        "source": "Security 4656",
+        "count": 312
+      },
+      {
+        "source": "Security 4690",
+        "count": 305
+      },
+      {
+        "source": "Security 4663",
+        "count": 298
+      },
+      {
+        "source": "Security 4703",
+        "count": 129
+      },
+      {
+        "source": "Windows PowerShell 800",
+        "count": 108
+      },
+      {
+        "source": "Microsoft-Windows-PowerShell/Operational 4103",
+        "count": 90
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 9",
+        "count": 56
+      }
+    ],
+    "credential_redactions": 20,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 12278
+    },
+    "techniques_labelled": [
+      "T1047",
+      "T1136.001"
+    ],
+    "techniques_detected": [],
+    "technique_recall": 0.0,
+    "techniques_missed": [
+      "T1047",
+      "T1136.001"
+    ],
+    "alerts": [
+      {
+        "id": "det_fd484fd8ce27c95f3f0e",
+        "rule_id": "TL-EXEC-001",
+        "rule_name": "Suspicious command execution: Account manipulation",
+        "technique": "T1098",
+        "tactic": "execution",
+        "severity": "medium",
+        "evidence_count": 2,
+        "summary": "Account manipulation on workstation5 (2 executions by pgustavo)",
+        "first_seen": "2020-09-14T12:06:02.591000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": false
+      },
+      {
+        "id": "det_158a116b4a7fda5a968c",
+        "rule_id": "TL-EXEC-001",
+        "rule_name": "Suspicious command execution: Account manipulation",
+        "technique": "T1098",
+        "tactic": "execution",
+        "severity": "medium",
+        "evidence_count": 4,
+        "summary": "Account manipulation on workstation6 (4 executions by pgustavo, workstation6$)",
+        "first_seen": "2020-09-14T12:06:02.743000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": false
+      }
+    ],
+    "alert_count": 2,
+    "alerts_matching_labels": 0,
+    "correlations": [
+      {
+        "investigation_id": "inv_17f8cfe534d08f9b",
+        "title": "Suspicious command execution: Account manipulation involving pgustavo on workstation5",
+        "severity": "medium",
+        "sources": {
+          "dataset:otrf-sdwin-200914080546": 1506
+        },
+        "cross_source": false
+      }
+    ],
+    "cross_source_correlations": 0,
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 1239.5,
+      "detect_and_correlate": 113.4,
+      "events_per_sec": 9905.6
+    },
+    "pipeline": {
+      "detections_created": 2,
+      "investigations_created": 1
+    }
+  }
+}

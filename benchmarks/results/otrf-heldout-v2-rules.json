@@ -1,0 +1,154 @@
+{
+  "id": "dsi_8f0fdb7d11181c0b",
+  "status": "succeeded",
+  "error": null,
+  "records": 6383,
+  "accepted": 6383,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 720.3,
+  "results": {
+    "events": 6383,
+    "event_types": {
+      "auth.login": 27,
+      "dns.query": 1,
+      "file.access": 11,
+      "network.flow": 60,
+      "other": 6276,
+      "process.start": 8
+    },
+    "unmapped_share": 0.9832,
+    "top_unmapped": [
+      {
+        "source": "Security 4658",
+        "count": 1049
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 10",
+        "count": 829
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 12",
+        "count": 602
+      },
+      {
+        "source": "Windows PowerShell 800",
+        "count": 547
+      },
+      {
+        "source": "Security 4690",
+        "count": 525
+      },
+      {
+        "source": "Security 4656",
+        "count": 525
+      },
+      {
+        "source": "Security 4663",
+        "count": 508
+      },
+      {
+        "source": "Microsoft-Windows-PowerShell/Operational 4103",
+        "count": 489
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 7",
+        "count": 259
+      },
+      {
+        "source": "security 4658",
+        "count": 143
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 13",
+        "count": 135
+      },
+      {
+        "source": "Security 4703",
+        "count": 110
+      },
+      {
+        "source": "security 4656",
+        "count": 80
+      },
+      {
+        "source": "security 4690",
+        "count": 72
+      },
+      {
+        "source": "Security 5158",
+        "count": 68
+      }
+    ],
+    "credential_redactions": 0,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 6383
+    },
+    "techniques_labelled": [
+      "T1047"
+    ],
+    "techniques_detected": [
+      "T1047"
+    ],
+    "technique_recall": 1.0,
+    "techniques_missed": [],
+    "alerts": [
+      {
+        "id": "det_286355fda2eb620f0660",
+        "rule_id": "TL-EXEC-002",
+        "rule_name": "Process execution through WMI",
+        "technique": "T1047",
+        "tactic": "execution",
+        "severity": "high",
+        "evidence_count": 1,
+        "summary": "Process execution through WMI on workstation6: WmiPrvSE spawned powershell.exe (1 event(s), user pgustavo)",
+        "first_seen": "2020-09-21T04:14:55.050000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200921001437"
+        ],
+        "matches_label": true
+      },
+      {
+        "id": "det_4e848302750f48ab5d77",
+        "rule_id": "TL-EXEC-001",
+        "rule_name": "Suspicious command execution: Encoded PowerShell",
+        "technique": "T1059.001",
+        "tactic": "execution",
+        "severity": "high",
+        "evidence_count": 1,
+        "summary": "Encoded PowerShell on workstation6 (1 executions by pgustavo)",
+        "first_seen": "2020-09-21T04:14:55.050000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200921001437"
+        ],
+        "matches_label": false
+      }
+    ],
+    "alert_count": 2,
+    "alerts_matching_labels": 1,
+    "correlations": [
+      {
+        "investigation_id": "inv_bfbcabe35bad6533",
+        "title": "Suspicious command execution: Encoded PowerShell involving pgustavo on workstation6",
+        "severity": "high",
+        "sources": {
+          "dataset:otrf-sdwin-200921001437": 1501
+        },
+        "cross_source": false
+      }
+    ],
+    "cross_source_correlations": 0,
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 606.0,
+      "detect_and_correlate": 50.6,
+      "events_per_sec": 10533.2
+    },
+    "pipeline": {
+      "detections_created": 2,
+      "investigations_created": 1
+    }
+  }
+}

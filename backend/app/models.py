@@ -446,3 +446,25 @@ class SavedFilter(Base):
     scope: Mapped[str] = mapped_column(String(20))  # investigations | events
     params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class DatasetImport(Base):
+    """One import of a catalogued public dataset, with its measured processing and evaluation results."""
+
+    __tablename__ = "dataset_imports"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(String(60), index=True)
+    status: Mapped[str] = mapped_column(String(20))  # running | succeeded | failed
+    archive_sha256: Mapped[str | None] = mapped_column(String(64))
+    imported_by: Mapped[str | None] = mapped_column(String(160))
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    records: Mapped[int] = mapped_column(Integer, default=0)
+    accepted: Mapped[int] = mapped_column(Integer, default=0)
+    duplicates: Mapped[int] = mapped_column(Integer, default=0)
+    rejected: Mapped[int] = mapped_column(Integer, default=0)
+    processing_ms: Mapped[float | None] = mapped_column(Float)
+    batch_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    results: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)

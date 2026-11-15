@@ -305,7 +305,185 @@ class WinSecParser:
         return ev
 
 
-PARSERS: dict[str, Parser] = {p.name: p for p in (NativeParser(), SshdParser(), WinSecParser())}
+# --------------------------------------------------------------------------- OTRF / Mordor (v2)
+
+_SYSMON = "Microsoft-Windows-Sysmon/Operational"
+# `net user <name> <password> /add` and similar: the password is a credential and must not be
+# copied into normalised, searchable fields. The raw record is kept verbatim (it is the evidence).
+_CRED_PATTERNS = [
+    re.compile(r"(?i)(\bnet1?(?:\.exe)?\s+user\s+(?:/add\s+)?[^\s/\"]+\s+)(?!/)([^\s\"]+)"),
+    re.compile(r"(?i)(/password[:=]\s*)([^\s\"]+)"),
+    re.compile(r"(?i)(-(?:p|password)\s+)([^\s\"]+)"),
+]
+
+
+def redact_credentials(cmd: str | None) -> tuple[str | None, bool]:
+    if not cmd:
+        return cmd, False
+    out = cmd
+    for pat in _CRED_PATTERNS:
+        out = pat.sub(lambda m: m.group(1) + "[REDACTED]", out)
+    return out, out != cmd
+
+
+def _short_host(value: Any) -> str | None:
+    h = _clean_str(value, 255)
+    return h.split(".")[0].lower() if h else None
+
+
+def _split_user(value: Any) -> tuple[str | None, str | None]:
+    """'THESHIRE\\pgustavo' -> ('pgustavo', 'THESHIRE'). Usernames are case-insensitive on Windows."""
+    u = _clean_str(value, 255)
+    if not u:
+        return None, None
+    domain, _, name = u.rpartition("\\")
+    return (name or u).lower(), domain or None
+
+
+def _basename(path: Any) -> str | None:
+    p = _clean_str(path)
+    return p.replace("\\", "/").rsplit("/", 1)[-1].lower() if p else None
+
+
+def _opt_ip(value: Any) -> str | None:
+    """Like _clean_ip, but a malformed address in real-world telemetry is dropped, not fatal."""
+    try:
+        return _clean_ip(value)
+    except ParseError:
+        return None
+
+
+class OtrfWindowsParser:
+    """
+    Windows event logs as published by OTRF Security-Datasets (Mordor): NXLog/Logstash JSON, one event
+    per line, mixing the Security, Sysmon, PowerShell and WMI channels.
+
+    Field-mapping decisions (documented in docs/REAL_WORLD_DATA_EVALUATION.md):
+      * timestamp comes from `@timestamp` (UTC, set by the collector). `EventTime` is the *local* wall
+        clock without an offset, so it is kept as an attribute but never trusted; a record with only
+        `EventTime` is rejected rather than silently shifted by an unknown timezone.
+      * host = first label of `Hostname`, lower-cased; the FQDN is kept in attributes.
+      * usernames lose their domain prefix and are lower-cased; the domain is kept in attributes.
+      * every record keeps its channel, event id, record number and a stable source_event_id;
+        events outside the mapped set become event_type "other" (nothing is dropped).
+      * credentials in command lines are redacted in normalised fields (tag: credential_redacted).
+    """
+
+    name = "otrf_windows"
+    version = "1"
+
+    def to_raw(self, record: Any, options: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(record, dict):
+            raise ParseError("OTRF records must be JSON objects")
+        return record
+
+    def parse(self, raw: dict[str, Any]) -> NormalizedEvent:
+        try:
+            eid = int(raw["EventID"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ParseError("missing EventID") from exc
+        if raw.get("@timestamp"):
+            ts = _parse_ts(raw["@timestamp"])
+        elif raw.get("UtcTime"):  # Sysmon's own UTC field
+            ts = _parse_ts(str(raw["UtcTime"]).replace(" ", "T") + "Z")
+        else:
+            raise ParseError("no UTC timestamp (@timestamp/UtcTime); refusing to guess the timezone of EventTime")
+        channel = _clean_str(raw.get("Channel"), 120) or "?"
+        fqdn = _clean_str(raw.get("Hostname"), 255)
+        attrs: dict[str, Any] = {
+            "event_id": eid, "channel": channel, "provider": _clean_str(raw.get("SourceName"), 120),
+            "record_number": raw.get("RecordNumber"), "fqdn": fqdn,
+            "source_event_id": f"{fqdn}/{channel}/{raw.get('RecordNumber')}",
+            "event_time_local": _clean_str(raw.get("EventTime"), 40),
+        }  # fmt: skip
+        ev = NormalizedEvent(event_type="other", timestamp=ts, host=_short_host(fqdn), attributes=attrs)
+
+        def user(field_name: str) -> None:
+            ev.username, domain = _split_user(raw.get(field_name))
+            if domain:
+                attrs["user_domain"] = domain
+
+        if channel == "Security":
+            self._security(eid, raw, ev, user)
+        elif channel == _SYSMON:
+            self._sysmon(eid, raw, ev, user)
+        elif channel in ("Microsoft-Windows-PowerShell/Operational", "Windows PowerShell") and eid == 4104:
+            ev.message = _clean_str(raw.get("ScriptBlockText"), MAX_CMD)
+            attrs["action"] = "script_block"
+        else:
+            ev.message = _clean_str(raw.get("Message"), 512)
+        ev.command_line, redacted = redact_credentials(ev.command_line)
+        if redacted:
+            ev.tags.append("credential_redacted")
+        scan_for_injection(ev)
+        return ev
+
+    def _security(self, eid: int, raw: dict[str, Any], ev: NormalizedEvent, user: Any) -> None:
+        a = ev.attributes
+        if eid in (4624, 4625):
+            ev.event_type, ev.outcome = "auth.login", "success" if eid == 4624 else "failure"
+            user("TargetUserName")
+            ev.src_ip = _opt_ip(raw.get("IpAddress"))
+            a["logon_type"] = raw.get("LogonType")
+        elif eid == 4688:
+            ev.event_type, ev.outcome = "process.start", "success"
+            user("SubjectUserName")
+            ev.process = _basename(raw.get("NewProcessName"))
+            ev.command_line = _clean_str(raw.get("CommandLine"), MAX_CMD)
+            a["parent_process"] = _basename(raw.get("ParentProcessName"))
+        elif eid in (4720, 4722, 4724, 4726):
+            ev.event_type, ev.outcome = "iam.change", "success"
+            user("SubjectUserName")
+            a["action"] = {4720: "account_create", 4722: "account_enable", 4724: "password_reset",
+                           4726: "account_delete"}[eid]  # fmt: skip
+            a["target_user"] = _split_user(raw.get("TargetUserName"))[0]
+        elif eid in WinSecParser._GROUP_ADD:
+            ev.event_type, ev.outcome = "iam.change", "success"
+            user("SubjectUserName")
+            a.update({"action": "group_add", "group": _clean_str(raw.get("TargetUserName")),
+                      "member": _clean_str(raw.get("MemberName")) or _clean_str(raw.get("MemberSid"))})  # fmt: skip
+        elif eid == 1102:
+            ev.event_type, ev.outcome = "log.cleared", "success"
+            user("SubjectUserName")
+            ev.message = "The audit log was cleared"
+        elif eid == 5156:  # Windows Filtering Platform: connection permitted
+            ev.event_type, ev.outcome = "network.flow", "success"
+            ev.src_ip, ev.dst_ip = _opt_ip(raw.get("SourceAddress")), _opt_ip(raw.get("DestAddress"))
+            ev.dst_port = _int_or_none(raw.get("DestPort"), "DestPort")
+            ev.process = _basename(raw.get("Application"))
+            a["direction"] = _clean_str(raw.get("Direction"), 40)
+        else:
+            ev.message = _clean_str(raw.get("Message"), 512)
+
+    def _sysmon(self, eid: int, raw: dict[str, Any], ev: NormalizedEvent, user: Any) -> None:
+        a = ev.attributes
+        if eid == 1:
+            ev.event_type, ev.outcome = "process.start", "success"
+            user("User")
+            ev.process = _basename(raw.get("Image"))
+            ev.command_line = _clean_str(raw.get("CommandLine"), MAX_CMD)
+            a.update({"parent_process": _basename(raw.get("ParentImage")), "process_guid": raw.get("ProcessGuid"),
+                      "parent_command_line": redact_credentials(_clean_str(raw.get("ParentCommandLine"), 2048))[0]})  # fmt: skip
+        elif eid == 3:
+            ev.event_type, ev.outcome = "network.flow", "success"
+            user("User")
+            ev.process = _basename(raw.get("Image"))
+            ev.src_ip, ev.dst_ip = _opt_ip(raw.get("SourceIp")), _opt_ip(raw.get("DestinationIp"))
+            ev.dst_port = _int_or_none(raw.get("DestinationPort"), "DestinationPort")
+            a["initiated"] = raw.get("Initiated")
+        elif eid == 22:
+            ev.event_type, ev.outcome = "dns.query", "success"
+            ev.process = _basename(raw.get("Image"))
+            ev.message = _clean_str(raw.get("QueryName"), 255)
+        elif eid == 11:
+            ev.event_type, ev.outcome = "file.access", "success"
+            ev.process = _basename(raw.get("Image"))
+            ev.message = _clean_str(raw.get("TargetFilename"), 1024)
+        else:
+            ev.message = _clean_str(raw.get("Message"), 512)
+
+
+PARSERS: dict[str, Parser] = {p.name: p for p in (NativeParser(), SshdParser(), WinSecParser(), OtrfWindowsParser())}
 
 
 def get_parser(name: str) -> Parser:

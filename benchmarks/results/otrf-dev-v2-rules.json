@@ -1,0 +1,202 @@
+{
+  "id": "dsi_2bf6b132b0d62753",
+  "status": "succeeded",
+  "error": null,
+  "records": 12278,
+  "accepted": 12278,
+  "duplicates": 0,
+  "rejected": 0,
+  "processing_ms": 1472.0,
+  "results": {
+    "events": 12278,
+    "event_types": {
+      "auth.login": 26,
+      "dns.query": 11,
+      "file.access": 103,
+      "iam.change": 4,
+      "network.flow": 234,
+      "other": 11850,
+      "process.start": 50
+    },
+    "unmapped_share": 0.9651,
+    "top_unmapped": [
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 10",
+        "count": 1655
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 12",
+        "count": 1496
+      },
+      {
+        "source": "Security 5447",
+        "count": 1430
+      },
+      {
+        "source": "Security 5158",
+        "count": 1366
+      },
+      {
+        "source": "Security 5154",
+        "count": 1299
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 7",
+        "count": 1262
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 13",
+        "count": 1143
+      },
+      {
+        "source": "Security 4658",
+        "count": 617
+      },
+      {
+        "source": "Security 4656",
+        "count": 312
+      },
+      {
+        "source": "Security 4690",
+        "count": 305
+      },
+      {
+        "source": "Security 4663",
+        "count": 298
+      },
+      {
+        "source": "Security 4703",
+        "count": 129
+      },
+      {
+        "source": "Windows PowerShell 800",
+        "count": 108
+      },
+      {
+        "source": "Microsoft-Windows-PowerShell/Operational 4103",
+        "count": 90
+      },
+      {
+        "source": "Microsoft-Windows-Sysmon/Operational 9",
+        "count": 56
+      }
+    ],
+    "credential_redactions": 20,
+    "injection_tagged": 0,
+    "local_time_offsets": {
+      "-4h": 12278
+    },
+    "techniques_labelled": [
+      "T1047",
+      "T1136.001"
+    ],
+    "techniques_detected": [
+      "T1047",
+      "T1136.001"
+    ],
+    "technique_recall": 1.0,
+    "techniques_missed": [],
+    "alerts": [
+      {
+        "id": "det_3f45b2f0bc1d6cd7da02",
+        "rule_id": "TL-EXEC-002",
+        "rule_name": "Process execution through WMI",
+        "technique": "T1047",
+        "tactic": "execution",
+        "severity": "high",
+        "evidence_count": 2,
+        "summary": "Process execution through WMI on workstation5: wmic \u2192 workstation6 (2 event(s), user pgustavo)",
+        "first_seen": "2020-09-14T12:06:02.591000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": true
+      },
+      {
+        "id": "det_baf46dff1bd021a75e84",
+        "rule_id": "TL-EXEC-001",
+        "rule_name": "Suspicious command execution: Account creation via net.exe",
+        "technique": "T1136.001",
+        "tactic": "execution",
+        "severity": "medium",
+        "evidence_count": 2,
+        "summary": "Account creation via net.exe on workstation5 (2 executions by pgustavo)",
+        "first_seen": "2020-09-14T12:06:02.591000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": true
+      },
+      {
+        "id": "det_7be83ada7bfabf88052d",
+        "rule_id": "TL-EXEC-002",
+        "rule_name": "Process execution through WMI",
+        "technique": "T1047",
+        "tactic": "execution",
+        "severity": "high",
+        "evidence_count": 2,
+        "summary": "Process execution through WMI on workstation6: WmiPrvSE spawned net.exe (2 event(s), user pgustavo, workstation6$)",
+        "first_seen": "2020-09-14T12:06:02.743000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": true
+      },
+      {
+        "id": "det_b33872d360eb081ef521",
+        "rule_id": "TL-EXEC-001",
+        "rule_name": "Suspicious command execution: Account creation via net.exe",
+        "technique": "T1136.001",
+        "tactic": "execution",
+        "severity": "medium",
+        "evidence_count": 4,
+        "summary": "Account creation via net.exe on workstation6 (4 executions by pgustavo, workstation6$)",
+        "first_seen": "2020-09-14T12:06:02.743000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": true
+      },
+      {
+        "id": "det_cf3362c593e67ddde22d",
+        "rule_id": "TL-PERS-001",
+        "rule_name": "New account created",
+        "technique": "T1136.001",
+        "tactic": "persistence",
+        "severity": "medium",
+        "evidence_count": 1,
+        "summary": "Account 'backdoor' created on workstation6 by pgustavo",
+        "first_seen": "2020-09-14T12:06:03.907000+00:00",
+        "sources": [
+          "dataset:otrf-sdwin-200914080546"
+        ],
+        "matches_label": true
+      }
+    ],
+    "alert_count": 5,
+    "alerts_matching_labels": 5,
+    "correlations": [
+      {
+        "investigation_id": "inv_6c5fe47711362d57",
+        "title": "2-stage intrusion (execution \u2192 persistence) involving pgustavo on workstation6",
+        "severity": "high",
+        "sources": {
+          "dataset:otrf-sdwin-200914080546": 1507
+        },
+        "cross_source": false
+      }
+    ],
+    "cross_source_correlations": 0,
+    "precision_note": "Not computed: the dataset has technique-level labels only and no benign baseline, so alert-level precision and false-positive rates would be invented.",
+    "timings_ms": {
+      "download": 0.0,
+      "parse_and_ingest": 1236.0,
+      "detect_and_correlate": 112.5,
+      "events_per_sec": 9933.5
+    },
+    "pipeline": {
+      "detections_created": 5,
+      "investigations_created": 1
+    }
+  }
+}

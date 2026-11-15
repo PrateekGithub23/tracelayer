@@ -165,6 +165,9 @@ PROCESS_SIGNATURES: list[tuple[re.Pattern[str], str, str, str]] = [
     (re.compile(r"\b(curl|wget)\b[^|]*\|\s*(ba)?sh\b", re.I), "Pipe-to-shell download", "high", "T1105"),
     (re.compile(r"vssadmin(\.exe)?.*delete\s+shadows", re.I), "Shadow copy deletion", "critical", "T1490"),
     (re.compile(r"\bwhoami(\.exe)?\b.*/(priv|groups|all)", re.I), "Privilege discovery", "low", "T1033"),
+    # v2 fix (found on OTRF real-world data): `net user ... /add` *creates* an account, which ATT&CK classifies as
+    # T1136 Create Account, not T1098 Account Manipulation. Group membership changes remain T1098.
+    (re.compile(r"\bnet1?(\.exe)?\s+user\b.*/add\b", re.I), "Account creation via net.exe", "medium", "T1136.001"),
     (re.compile(r"\bnet1?(\.exe)?\s+(user|group|localgroup)\b.*/(add|domain)", re.I), "Account manipulation",
      "medium", "T1098"),
     (re.compile(r"\bnc(at)?\b.*\s-e\s", re.I), "Reverse shell", "high", "T1059"),
@@ -340,6 +343,76 @@ class LogTampering(Rule):
         ]
 
 
+class RemoteWmiExecution(Rule):
+    """ATT&CK T1047 (Windows Management Instrumentation). Detection guidance: process creation through WMI,
+    i.e. `wmic /node:<remote> process call create`, or the WMI provider host (WmiPrvSE.exe) spawning a
+    command interpreter or living-off-the-land binary. Written from the ATT&CK description (v2)."""
+
+    id = "TL-EXEC-002"
+    name = "Process execution through WMI"
+    severity = "high"
+    tactic = "execution"
+    technique = "T1047"
+    description = (
+        "Remote or local process creation via WMI (wmic process call create, or WmiPrvSE.exe spawning a shell/LOLBin)."
+    )
+    event_types = frozenset({"process.start"})
+    _wmic_create = re.compile(r"\bwmic(\.exe)?\b.*\bprocess\s+call\s+create\b", re.I)
+    _wmic_remote = re.compile(r"/node:\s*\"?([^\s\"]+)", re.I)
+    _children = {"cmd.exe", "powershell.exe", "pwsh.exe", "net.exe", "net1.exe", "rundll32.exe", "mshta.exe",
+                 "cscript.exe", "wscript.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe"}  # fmt: skip
+
+    def evaluate(self, events: list[EventView]) -> list[Candidate]:
+        groups: dict[tuple[str, str], list[EventView]] = defaultdict(list)
+        for e in events:
+            if e.event_type != "process.start":
+                continue
+            parent = str((e.attributes or {}).get("parent_process") or "").lower()
+            if e.command_line and self._wmic_create.search(e.command_line):
+                m = self._wmic_remote.search(e.command_line)
+                groups[(e.host or "?", f"wmic → {m.group(1).lower()}" if m else "wmic (local)")].append(e)
+            elif parent == "wmiprvse.exe" and (e.process or "").lower() in self._children:
+                groups[(e.host or "?", f"WmiPrvSE spawned {e.process}")].append(e)
+        out = []
+        for (host, how), evs in groups.items():
+            for run in bursts(sorted(evs, key=lambda x: x.timestamp), timedelta(minutes=30)):
+                users = _top([e.username for e in run], 3)
+                target = how.split("→ ")[1] if "→ " in how else None
+                out.append(self.candidate(
+                    key=f"{host}|{how}|{bucket(run[0].timestamp)}", events=run, confidence=0.8,
+                    summary=f"Process execution through WMI on {host}: {how} ({len(run)} event(s), user {', '.join(users) or '?'})",
+                    entities=ent("host", host) + ent("host", target) + [x for u in users for x in ent("user", u)],
+                ))  # fmt: skip
+        return out
+
+
+class LocalAccountCreated(Rule):
+    """ATT&CK T1136.001 (Create Account: Local Account). Data source: Windows Security 4720 / user-account
+    creation events, normalised as iam.change action=account_create (v2)."""
+
+    id = "TL-PERS-001"
+    name = "New account created"
+    severity = "medium"
+    tactic = "persistence"
+    technique = "T1136.001"
+    description = "A user account was created. Legitimate in provisioning workflows; suspicious when created by a non-IT user or alongside other detections."
+    event_types = frozenset({"iam.change"})
+
+    def evaluate(self, events: list[EventView]) -> list[Candidate]:
+        out = []
+        for e in events:
+            a = e.attributes or {}
+            if e.event_type != "iam.change" or a.get("action") != "account_create":
+                continue
+            target = a.get("target_user")
+            out.append(self.candidate(
+                key=f"{e.host}|{target}|{bucket(e.timestamp)}", events=[e], confidence=0.7,
+                summary=f"Account '{target or '?'}' created on {e.host or '?'} by {e.username or 'unknown'}",
+                entities=ent("host", e.host) + ent("user", e.username) + ent("user", target),
+            ))  # fmt: skip
+        return out
+
+
 class TelemetryInjection(Rule):
     id = "TL-AI-001"
     name = "Adversarial instructions embedded in telemetry"
@@ -369,7 +442,7 @@ class TelemetryInjection(Rule):
 
 ALL_RULES: list[Rule] = [
     BruteForce(), SuccessAfterFailures(), ImpossibleTravel(), SuspiciousProcess(), PrivilegeEscalation(),
-    LateralMovement(), Exfiltration(), LogTampering(), TelemetryInjection(),
+    LateralMovement(), Exfiltration(), LogTampering(), TelemetryInjection(), RemoteWmiExecution(), LocalAccountCreated(),
 ]  # fmt: skip
 
 assert all(r.severity in SEVERITY_ORDER for r in ALL_RULES)

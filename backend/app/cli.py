@@ -17,6 +17,7 @@ import argparse
 import getpass
 import json
 import sys
+from typing import Any
 
 from app.config import get_settings
 
@@ -43,6 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--email", required=True)
     rp.add_argument("--password-stdin", action="store_true")
     sub.add_parser("chain-head")
+    dsp = sub.add_parser("dataset")
+    dsp.add_argument("action", choices=["list", "import"])
+    dsp.add_argument("dataset_id", nargs="?")
+    dsp.add_argument("--file", help="use a local copy (its SHA-256 must still match the catalogue)")
+    dsp.add_argument("--json", help="write the evaluation results here")
     args = ap.parse_args(argv)
 
     settings = get_settings()
@@ -91,6 +97,37 @@ def main(argv: list[str] | None = None) -> int:
         runner.main()
     elif args.cmd in ("create-user", "reset-password"):
         return _account_command(args)
+    elif args.cmd == "dataset":
+        from app.datasets.catalog import DATASETS
+
+        if args.action == "list":
+            for d in DATASETS.values():
+                print(f"{d.id:28} {d.role:11} {d.license:4} {d.name}")
+            return 0
+        from app.datasets.importer import run_import
+        from app.db import init_engine, session_scope
+        from app.migrate import upgrade
+
+        upgrade(settings.database_url)
+        init_engine(settings.database_url)
+        with session_scope() as db:
+            imp = run_import(db, args.dataset_id, actor="cli", local_file=args.file)
+            out = {"id": imp.id, "status": imp.status, "error": imp.error, "records": imp.records,
+                   "accepted": imp.accepted, "duplicates": imp.duplicates, "rejected": imp.rejected,
+                   "processing_ms": imp.processing_ms, "results": imp.results}  # fmt: skip
+        if args.json:
+            with open(args.json, "w") as fh:
+                json.dump(out, fh, indent=2, default=str)
+        print(json.dumps({k: v for k, v in out.items() if k != "results"}, default=str))
+        res: dict[str, Any] = out["results"] or {}  # type: ignore[assignment]
+        print(json.dumps({k: res.get(k) for k in ("event_types", "unmapped_share", "technique_recall", "techniques_detected",
+                                                "techniques_missed", "alert_count", "credential_redactions",
+                                                "local_time_offsets", "timings_ms")}, indent=1, default=str))  # fmt: skip
+        for a in res.get("alerts", []):
+            print(
+                f"  ALERT {a['rule_id']} {a['technique']} {a['severity']:8} label={a['matches_label']} {a['summary']}"
+            )
+        return 0 if out["status"] == "succeeded" else 1
     elif args.cmd == "chain-head":
         from sqlalchemy import select
 

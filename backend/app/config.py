@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     allow_synthetic: bool = True
     # Interactive API docs at /docs. Off by default so a public deployment does not advertise its surface.
     expose_docs: bool = False
+    # Where downloaded public datasets are cached (gitignored). Downloads happen only on an explicit admin
+    # action, only from catalogued URLs, and only if the SHA-256 matches the pinned value.
+    data_dir: str = "./data"
+    allow_dataset_download: bool = True
+
     # Hard cap on any request body, enforced in ASGI middleware before parsing.
     max_request_bytes: int = 30 * 1024 * 1024
 
