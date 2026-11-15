@@ -24,6 +24,7 @@ is far worse than a true claim labelled "unsupported", because the analyst can
 always add citations, but cannot see a hallucination that was rubber-stamped.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,6 +48,14 @@ MAX_CITATIONS = 500
 # Citing many events of which few are relevant is a way to make anything look supported.
 FLOOD_MIN_CITATIONS = 20
 FLOOD_MIN_PRECISION = 0.25
+# v2: claims must be atomic. Long or multi-sentence text hides unverified statements among verified ones.
+MAX_CLAIM_CHARS = 600
+MAX_CLAIM_SENTENCES = 3
+_UPPER = {"at most", "no more than", "up to"}
+_STRICT_UPPER = {"fewer than", "less than", "under"}
+_LOWER = {"at least"}
+_STRICT_LOWER = {"more than", "over", "upwards of", "in excess of"}
+_APPROX = {"approximately", "about", "roughly", "around", "~"}
 
 
 @dataclass
@@ -134,14 +143,32 @@ def _count_filter(events: list[EventView], a: Assertions) -> list[EventView]:
 
 def _count_ok(claimed: float, qualifier: str, refs: list[float], tolerance: float) -> bool:
     for ref in refs:
-        if qualifier in ("at least", "more than", "over"):
-            if claimed <= ref * (1 + tolerance):
-                return True
-        elif qualifier in ("approximately", "about", "~"):
-            if ref and abs(claimed - ref) / ref <= max(tolerance, 0.15):
-                return True
-        elif ref == claimed or (ref and abs(claimed - ref) / ref <= tolerance):
+        if qualifier in _LOWER and ref >= claimed * (1 - tolerance):
             return True
+        if qualifier in _STRICT_LOWER and ref > claimed * (1 - tolerance):
+            return True
+        if qualifier in _UPPER and ref <= claimed * (1 + tolerance):
+            return True
+        if qualifier in _STRICT_UPPER and ref < claimed * (1 + tolerance) and ref != claimed:
+            return True
+        if qualifier in _APPROX and ref and abs(claimed - ref) / ref <= max(tolerance, 0.15):
+            return True
+        if not qualifier and (ref == claimed or (ref and abs(claimed - ref) / ref <= tolerance)):
+            return True
+    return False
+
+
+def _time_ok(t: dict[str, Any], events: list[EventView]) -> bool:
+    tol = 5.0 if t.get("has_seconds") else 90.0  # "11:09" means anywhere in that minute, plus clock skew
+    for e in events:
+        if t.get("utc") is not None:
+            if abs((e.timestamp - t["utc"]).total_seconds()) <= tol:
+                return True
+        else:
+            ev_min = e.timestamp.hour * 60 + e.timestamp.minute + e.timestamp.second / 60
+            diff = abs(ev_min - t["minutes"]) % 1440
+            if min(diff, 1440 - diff) * 60 <= tol:
+                return True
     return False
 
 
@@ -177,10 +204,38 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
         "counts": a.counts, "hedged": a.hedged, "correlational": a.correlational, "dismissive": a.dismissive,
     }  # fmt: skip
 
+    checks["extracted"].update({"times": [t["text"] for t in a.times], "conclusions": a.conclusions,
+                                "authority_appeal": a.authority, "deceptive": a.deceptive})  # fmt: skip
+    warnings: list[str] = []
+    trace: list[dict[str, str]] = [
+        {"stage": "1. parse claim", "result": f"{len(a.mentions)} activity, {len(a.counts)} quantity, "
+                                              f"{len(a.times)} time, {len(a.ips) + len(a.users) + len(a.hosts)} entity assertion(s)"},
+        {"stage": "2. resolve citations", "result": f"{len(resolved)} in scope, {len(fabricated)} fabricated, "
+                                                   f"{len(out_of_scope)} out of scope"},
+    ]  # fmt: skip
+
     def result(verdict: str) -> ClaimResult:
+        trace.append({"stage": "8. verdict", "result": verdict})
+        checks["stages"] = trace
+        checks["warnings"] = warnings
+        # Anything short of verified/correlated, or verified with caveats, needs a human decision.
+        checks["requires_review"] = verdict not in (VERIFIED, CORRELATION) or bool(warnings)
         return ClaimResult(claim.text, kind, raw, resolved, verdict, reasons, checks)
 
-    # 2. Hard failures: anything invented makes the whole claim untrustworthy.
+    # 2. Hard failures: anything invented, deceptive or manipulative makes the whole claim untrustworthy.
+    sentences = [x for x in re.split(r"(?<=[.!?])\s+", claim.text.strip()) if len(x.strip()) > 3]
+    if not claim.text.strip() or len(claim.text) > MAX_CLAIM_CHARS or len(sentences) > MAX_CLAIM_SENTENCES:
+        reasons.append(f"Not an atomic claim ({len(claim.text)} characters, {len(sentences)} sentences): each "
+                       "statement must be short enough to verify on its own")  # fmt: skip
+        return result(UNSUPPORTED)
+    if a.deceptive:
+        reasons.append("Deceptive characters: " + "; ".join(a.deceptive[:3]))
+        return result(UNSUPPORTED)
+    if a.authority:
+        reasons.append(
+            "Appeals to approval or authority that is not in the telemetry (social engineering of the reviewer)"
+        )
+        return result(UNSUPPORTED)
     if any(p.search(claim.text) for p in INJECTION_PATTERNS):
         reasons.append("Claim text contains instructions aimed at the reviewer or validator (prompt injection)")
         return result(UNSUPPORTED)
@@ -233,12 +288,23 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
             else:
                 checks.setdefault("absence_verified", []).append(m.label)
 
+    # 4b. Attribution / intent / location conclusions cannot be established from telemetry.
+    if a.conclusions and not (a.hedged or kind == "hypothesis"):
+        unsupported.append(f"States an inference as fact ({', '.join(a.conclusions)}): telemetry cannot establish "
+                           "who is responsible, their intent, or where they are")  # fmt: skip
+    trace.append({"stage": "3. framing", "result": ", ".join(x for x, on in (
+        ("hedged", a.hedged), ("correlational", a.correlational), ("dismissive", a.dismissive),
+        ("conclusion", bool(a.conclusions)), ("negated", bool(negated))) if on) or "plain observation"})  # fmt: skip
+
     # 5. Uncited claims: only an honestly hedged hypothesis is acceptable.
     positive = [m for m in a.mentions if not m.negated]
     if not cited and not (a.gap_types or negated):
         if contradictions:
             reasons.extend(contradictions)
             return result(CONTRADICTORY)
+        if unsupported and not (kind == "hypothesis" or a.hedged):
+            reasons.extend(unsupported)
+            return result(UNSUPPORTED)
         if kind == "hypothesis" or a.hedged:
             reasons.append("Speculative statement with no cited evidence; must not be treated as a finding")
             return result(HYPOTHESIS)
@@ -316,6 +382,21 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
                 float(len({e.host for e in sel if e.host and e.host.lower() in a.hosts})),
             ]
             tol, label = 0.0, "distinct hosts"
+        elif qty["kind"] == "success_auth":
+            pred = [e for e in cited if e.event_type == "auth.login" and e.outcome == "success"]
+            spred = [e for e in scope_events if e.event_type == "auth.login" and e.outcome == "success"]
+            refs = [float(len(_count_filter(pred, a))), float(len(_count_filter(spred, a)))]
+            tol, label = 0.0, "successful logins"
+        elif qty["kind"] == "times":
+            # "N times": distinct events showing the claimed activity. Citing one event N times proves once.
+            base = positive[:1]
+            pred = [e for e in cited if (not base or _matches(e, base[0])) and _involves(e, a)]
+            spred = [
+                e for e in scope_events if (not base or _matches(e, base[0])) and _located(e, a) and _involves(e, a)
+            ]
+            refs = [float(len(pred)), float(len(spred))]
+            tol, label = 0.0, f"occurrences of {base[0].label if base else 'the activity'}"
+            checks["duplicate_citations"] = len(raw) - len(dict.fromkeys(raw))
         elif qty["kind"] == "flows":
             pred = _count_filter([e for e in cited if e.event_type == "network.flow"], a)
             refs, tol, label = [float(len(pred))], 0.0, "network flows"
@@ -330,6 +411,30 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
             claimed = f"{n / 1024 / 1024:.1f} MB" if qty["kind"] == "bytes" else f"{n:.0f}"
             contradictions.append(f"Claims {q + ' ' if q else ''}{claimed} {label}; evidence shows {' / '.join(found)}")
 
+    trace.append(
+        {"stage": "4. compare attributes", "result": f"{len(checks.get('count_checks', []))} quantity check(s)"}
+    )
+
+    # 9b. Stated times must match the cited events showing the activity (timezone-converted to UTC).
+    for t in a.times:
+        if t.get("ambiguous"):
+            unsupported.append(f"Time '{t['text']}' uses an ambiguous timezone abbreviation; state the UTC time")
+            continue
+        basis = [e for e in cited if any(_matches(e, m) for m in positive)] or [e for e in cited if _involves(e, a)]
+        if not basis:
+            unsupported.append(f"Time '{t['text']}' is not backed by any cited event")
+        elif not _time_ok(t, basis):
+            shown = sorted({f"{e.timestamp:%Y-%m-%d %H:%M:%S}" for e in basis})[:3]
+            contradictions.append(f"Claims '{t['text']}' but the cited evidence is at {', '.join(shown)} UTC")
+        elif t.get("assumed_utc"):
+            warnings.append(f"Time '{t['text']}' has no timezone; it matched when read as UTC")
+    trace.append(
+        {
+            "stage": "5. temporal checks",
+            "result": f"{len(a.times)} stated time(s), {len(temporal_pairs(a))} ordering(s)",
+        }
+    )
+
     # 10. Temporal order ("X after Y", "X followed by Y").
     for earlier, later in temporal_pairs(a):
         e1 = [e.timestamp for e in cited if _matches(e, earlier)]
@@ -337,6 +442,14 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
         if e1 and e2 and min(e1) > max(e2):
             contradictions.append(f"Order is reversed: evidence shows {later.label} before {earlier.label}")
     checks["temporal_pairs"] = [f"{x.label} -> {y.label}" for x, y in temporal_pairs(a)]
+
+    trace.append({"stage": "6. contradictions", "result": "; ".join(contradictions) or "none"})
+    trace.append(
+        {
+            "stage": "7. support",
+            "result": f"{len(unsupported)} unsupported, {len(missing)} missing-telemetry finding(s)",
+        }
+    )
 
     # 11. Decide.
     if contradictions:

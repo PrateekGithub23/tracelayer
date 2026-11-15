@@ -37,6 +37,8 @@ from app.ai.service import summary_issues
 from app.correlation.engine import run_correlation
 from app.detection.base import EventView
 from app.detection.engine import run_detection
+from app.evaluation.dev_v2 import build_dev_v2
+from app.evaluation.heldout_v2 import HELDOUT_V2_VERSION, build_heldout_v2
 from app.ingestion.pipeline import ingest_records
 from app.integrity.scope import Scope, build_scope
 from app.integrity.validator import (
@@ -294,7 +296,18 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
                         "recall": round(tp / (tp + fn), 3) if tp + fn else None}  # fmt: skip
     adv = [r for r in rows if r["adversarial"]]
     legit = [r for r in rows if not r["adversarial"]]
+    expected_unsafe = [r for r in rows if r["expected"] in UNSAFE]
     return {
+        # Dangerous false verification: an adversarial (false, fabricated, deceptive or overstated) claim
+        # labelled verified_observation or heuristic_correlation, i.e. presented to the analyst as supported.
+        "false_verification": sum(r["actual"] in TRUSTED for r in adv),
+        "false_verification_rate": round(sum(r["actual"] in TRUSTED for r in adv) / len(adv), 3) if adv else 0,
+        # Of claims that should be rejected (unsupported/contradictory), how many were rejected as either.
+        "unsupported_rejection_rate": round(
+            sum(r["actual"] in UNSAFE for r in expected_unsafe) / len(expected_unsafe), 3
+        )
+        if expected_unsafe
+        else None,
         "cases": len(rows),
         "accuracy": round(sum(r["correct"] for r in rows) / len(rows), 3),
         "adversarial_cases": len(adv),
@@ -309,7 +322,7 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def run_suite() -> dict[str, Any]:
+def run_suite(include_heldout_v2: bool = True) -> dict[str, Any]:
     t0 = time.perf_counter()
     db, truth = build_environment()
     main = build_scope(db, _find_investigation(db, "TL-EXFIL-001").id)
@@ -333,13 +346,26 @@ def run_suite() -> dict[str, Any]:
                      "kind": c.kind, "expected": c.expected, "actual": r.verdict, "correct": r.verdict == c.expected,
                      "reasons": r.reasons})  # fmt: skip
 
-    heldout_rows = []
-    for c in build_heldout_cases(main, ssh, truth):
-        r = validate_claim(ClaimInput(c.text, c.kind, c.citations), main if c.scope == "main" else ssh)
-        heldout_rows.append({"id": c.id, "category": c.category, "adversarial": c.adversarial, "text": c.text,
-                             "kind": c.kind, "expected": c.expected, "actual": r.verdict,
-                             "correct": r.verdict == c.expected, "reasons": r.reasons})  # fmt: skip
+    def run_set(set_cases: list[Case]) -> tuple[list[dict[str, Any]], list[float]]:
+        out, lats = [], []
+        for c in set_cases:
+            t = time.perf_counter()
+            r = validate_claim(ClaimInput(c.text, c.kind, c.citations), main if c.scope == "main" else ssh)
+            lats.append((time.perf_counter() - t) * 1000)
+            out.append({"id": c.id, "category": c.category, "adversarial": c.adversarial, "text": c.text[:300],
+                        "kind": c.kind, "expected": c.expected, "actual": r.verdict, "correct": r.verdict == c.expected,
+                        "reasons": r.reasons, "requires_review": r.checks.get("requires_review")})  # fmt: skip
+        return out, lats
+
+    heldout_rows, _ = run_set(build_heldout_cases(main, ssh, truth))
     heldout = _metrics(heldout_rows)
+    dev2_rows, dev2_lat = run_set(build_dev_v2(main, ssh, truth, Case))
+    sets = {"dev_v1": None, "regression_v1_heldout": heldout, "dev_v2": _metrics(dev2_rows)}
+    ho2_rows: list[dict[str, Any]] = []
+    if include_heldout_v2:
+        ho2_rows, ho2_lat = run_set(build_heldout_v2(main, ssh, truth, Case))
+        sets["heldout_v2"] = {**_metrics(ho2_rows), "version": HELDOUT_V2_VERSION}
+        dev2_lat += ho2_lat
 
     structural = structural_checks(main)
     baseline = {}
@@ -352,7 +378,8 @@ def run_suite() -> dict[str, Any]:
     db.close()
 
     metrics = _metrics(rows)
-    lat = sorted(latencies)
+    sets["dev_v1"] = metrics
+    lat = sorted(latencies + dev2_lat)
     by_category: dict[str, dict[str, int]] = defaultdict(lambda: {"cases": 0, "correct": 0})
     for row in rows:
         by_category[row["category"]]["cases"] += 1
@@ -377,13 +404,17 @@ def run_suite() -> dict[str, Any]:
             "structural_total": len(structural),
             "deterministic_baseline_unsafe": sum(b["unsafe_claims"] for b in baseline.values()),
             "validation_p50_ms": round(lat[len(lat) // 2], 3),
+            "validation_p95_ms": round(lat[int(len(lat) * 0.95)], 3),
             "validation_max_ms": round(lat[-1], 3),
+            "validation_samples": len(lat),
             "heldout_cases": heldout["cases"],
             "heldout_accuracy": heldout["accuracy"],
             "heldout_unsafe_acceptance": heldout["unsafe_acceptance"],
             "heldout_false_rejection": heldout["false_rejection"],
         },  # fmt: skip
         "heldout": {"metrics": heldout, "cases": heldout_rows},
+        "sets": sets,
+        "set_cases": {"dev_v2": dev2_rows, "heldout_v2": ho2_rows},
         "metrics": metrics,
         "by_category": dict(by_category),
         "cases": rows,
@@ -401,8 +432,9 @@ def run_suite() -> dict[str, Any]:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Run the TraceLayer adversarial integrity evaluation")
     ap.add_argument("--json", help="write the full report to this path")
+    ap.add_argument("--no-heldout", action="store_true", help="skip the frozen held-out v2 set (use while developing)")
     args = ap.parse_args()
-    rep = run_suite()
+    rep = run_suite(include_heldout_v2=not args.no_heldout)
     s = rep["summary"]
     print(f"cases={s['cases']} accuracy={s['accuracy']:.1%} unsafe_acceptance={s['unsafe_acceptance']} "
           f"false_rejection={s['false_rejection']} structural={s['structural_passed']}/{s['structural_total']} "
@@ -419,6 +451,19 @@ def main() -> None:
         if not r["correct"]:
             print(f"  HELD-OUT MISS {r['id']} expected={r['expected']} actual={r['actual']} {r['text'][:70]}")
             print(f"       reasons: {r['reasons']}")
+    for name, m in rep["sets"].items():
+        print(f"[{name:22}] cases={m['cases']:3} accuracy={m['accuracy']:.1%} false_verification={m['false_verification']}"
+              f" ({m['false_verification_rate']:.1%}) unsupported_rejection={m['unsupported_rejection_rate']}"
+              f" false_rejection={m['false_rejection']} ({m['false_rejection_rate']:.1%})")  # fmt: skip
+    for name, rows in rep["set_cases"].items():
+        for r in rows:
+            if not r["correct"]:
+                print(f"  {name.upper()} MISS {r['id']} {r['category']} expected={r['expected']} actual={r['actual']}")
+                print(f"       reasons: {r['reasons'][:2]}")
+    print(
+        f"latency p50={s['validation_p50_ms']} ms p95={s['validation_p95_ms']} ms max={s['validation_max_ms']} ms "
+        f"(n={s['validation_samples']})"
+    )
     for st in rep["structural"]:
         if not st["passed"]:
             print(f"  STRUCTURAL FAIL: {st['check']}")
