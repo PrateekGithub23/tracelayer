@@ -142,6 +142,10 @@ def create_app() -> FastAPI:
                   for e in exc.errors()][:20]  # fmt: skip
         return JSONResponse({"detail": detail}, status_code=422)
 
+    @app.exception_handler(jobs.JobAlreadyRunning)
+    async def job_running(_request: Request, exc: jobs.JobAlreadyRunning) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+
     @app.middleware("http")
     async def instrument(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         t0 = time.perf_counter()

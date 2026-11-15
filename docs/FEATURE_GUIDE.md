@@ -216,3 +216,72 @@ For each major feature, this guide covers: **what** was implemented · **files**
 **Files.** `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, `Makefile`, `.github/workflows/ci.yml`.
 
 **Risks.** One API worker, because background jobs are in-process. Scaling out would mean an external queue and running migrations as a separate step.
+
+---
+
+# v2 features
+
+## 11. Accounts, sessions and roles
+
+- **What:** per-user accounts (Argon2id), HttpOnly server-side sessions with idle and absolute expiry,
+  per-session CSRF tokens, invitation registration, admin-issued recovery codes, active-sessions page,
+  sign-in history, and three roles enforced through permissions.
+- **Files:** `backend/app/auth/*`, `api/auth.py`, `api/admin.py`, `api/deps.py`; `frontend/src/lib/auth.tsx`,
+  `pages/auth/*`, `pages/Account.tsx`, `pages/Admin.tsx`.
+- **Why:** v1's shared token bypassed roles, and its client-supplied analyst name made the audit log
+  record forged identities.
+- **Tests:** `test_auth.py`, `test_rbac_matrix.py` (every route × every role), Playwright `e2e/`.
+- **Explain it:** "Sessions are opaque random tokens in HttpOnly cookies; the DB stores only their hash.
+  That lets me revoke instantly, which JWTs can't do without a deny-list."
+- **Risks:** no MFA; in-process rate limits. Details in [AUTHENTICATION.md](AUTHENTICATION.md).
+
+## 12. Case management
+
+- **What:** a six-state workflow with enforced transitions and mandatory reasons, ownership,
+  reviewer segregation of duties, priority, comments and notes (author-only edits, hashed in the audit
+  log), pinned evidence, private saved filters, queue views (mine, needs my review, unassigned,
+  recently updated), an activity feed built from the hash-chained audit log, and optimistic locking.
+- **Files:** `backend/app/cases.py`, `api/cases.py`, migration `0003`; `frontend/src/components/CasePanel.tsx`.
+- **Why:** investigations became work that several people share, so changes must be attributable, ordered and conflict-safe.
+- **Tests:** `test_cases.py`, including a real two-thread race where exactly one writer wins, closed cases
+  never changing evidence, IDOR checks, and a migration round-trip of v1 data.
+- **Explain it:** "Every PATCH carries the version the analyst saw. SQLAlchemy turns that into
+  `UPDATE … WHERE version = :seen`, so a stale write affects zero rows and the API answers 409."
+
+## 13. Public telemetry datasets
+
+- **What:** a pinned, licence-checked catalogue (OTRF Security-Datasets, MIT); a complete Windows
+  adapter (Security, Sysmon, PowerShell); safe archive import; dataset pages with provenance, field
+  mapping, detection results and schema-loss analysis; MIT-compliant samples.
+- **Files:** `backend/app/datasets/*`, `ingestion/parsers.py` (`OtrfWindowsParser`), `pages/Datasets.tsx`.
+- **Findings it produced:** the local-time `EventTime` trap (−4 h), credentials in command lines, a
+  T1098 → T1136.001 mislabel in a v1 rule, and two new rules validated on a held-out dataset.
+  ([REAL_WORLD_DATA_EVALUATION.md](REAL_WORLD_DATA_EVALUATION.md))
+- **Tests:** `test_datasets.py` (path traversal, symlinks, zip bombs, hash pinning, mapping, redaction, timezone refusal, API import).
+
+## 14. Integrity engine v2 and the local LLM
+
+- **What:** timestamp checks with timezone conversion, homoglyph and zero-width detection, clause-scoped
+  negation, comparatives and number words, "N times" over distinct citations, attribution and authority
+  detection, under-citation handling, a stage trace and `requires_review`; Ollama provenance, single-flight
+  generation, an AI engine page, and the LLM-vs-deterministic benchmark.
+- **Evidence:** held-out v2 rose from 62.5% (5 false verifications) to 97.5% (0) on the official run.
+  llama3.2:3b: 15/15 valid JSON but 57% unsafe claims. ([AI_EVALUATION.md](AI_EVALUATION.md))
+
+## 15. Public demo and guided scenario
+
+- **What:** a static build of the same app whose transport serves real recorded API responses and applies
+  the server's workflow rules in memory; a guided eight-step scenario, "The Suspicious Login That Wasn't Just
+  a Login", built from live data in both modes.
+- **Files:** `backend/app/demo/build_snapshot.py`, `frontend/src/demo/transport.ts`, `pages/Walkthrough.tsx`,
+  `.github/workflows/deploy-demo.yml`.
+- **Tests:** `e2e-demo/demo.spec.ts`: zero `/api` calls, segregation of duties, approval gate, reset on reload.
+- **Explain it:** "The demo isn't mocked: I boot the real backend, run the real pipeline and model, and record
+  its responses. The browser then replays them, so the public site has nothing to attack and costs nothing."
+
+## 16. Hardening
+
+PostgreSQL least privilege (runtime role cannot UPDATE/DELETE evidence), unprivileged read-only containers,
+hash-pinned dependencies, SHA-pinned CI actions, a body-size limit, sanitised errors, Markdown-export
+escaping, an open-redirect guard, gitleaks, pip-audit and npm audit, and a stdlib-only bundle verifier.
+([SECURITY.md](SECURITY.md), [V2_SECURITY_AUDIT.md](V2_SECURITY_AUDIT.md))

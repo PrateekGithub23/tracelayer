@@ -16,7 +16,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -32,9 +32,22 @@ _PIPELINE_LOCK = threading.Lock()
 JobFn = Callable[[Session, str], dict[str, Any]]
 
 
+class JobAlreadyRunning(RuntimeError):
+    pass
+
+
+# Expensive job kinds may not be queued while one is already queued or running (audit finding M2):
+# repeated clicks or a scripted loop cannot stack up CPU-heavy benchmarks.
+SINGLETON_KINDS = frozenset({"evaluation", "benchmark", "dataset_import"})
+
+
 def submit(kind: str, fn: JobFn, params: dict[str, Any] | None = None) -> str:
     run_id = new_id("run")
     with session_scope() as db:
+        if kind in SINGLETON_KINDS and db.scalar(
+            select(PipelineRun.id).where(PipelineRun.kind == kind, PipelineRun.status.in_(["queued", "running"]))
+        ):
+            raise JobAlreadyRunning(f"a {kind} job is already queued or running")
         db.add(PipelineRun(id=run_id, kind=kind, status="queued", params=params or {}))
     if get_settings().background_jobs:
         _executor.submit(_execute, run_id, fn)

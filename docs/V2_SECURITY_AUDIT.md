@@ -1,6 +1,6 @@
 # TraceLayer v2: Security and Architecture Audit
 
-**Audited revision:** `0c6be04` (v1 baseline) · **Date:** 2026-11-14 · **Method:** manual review of every
+**Audited revision:** `0c6be04` (v1 baseline) · **Date:** 2026-11-14 · **Status column re-verified against the code:** 2026-11-15 · **Method:** manual review of every
 backend router, model, dependency, the job runner, Docker/nginx configuration, the frontend HTTP client, and
 CI; reproduction of the v1 test suite (58 + 9 passing) and evaluation results; plus a new frozen held-out
 evaluation of the integrity engine.
@@ -14,7 +14,7 @@ means an authenticated or local attacker can cause serious harm, or a core secur
 **Medium** means defence-in-depth gaps or availability risk. **Low** means hygiene issues.
 
 The "Status" column refers to the v2 work. Each fix is described in the linked document and covered by
-tests (see `backend/tests/test_auth*.py`, `test_rbac_matrix.py`, `test_cases.py`, `test_hardening.py`).
+tests (`backend/tests/test_auth.py`, `test_rbac_matrix.py`, `test_cases.py`, `test_datasets.py`, `test_api.py`), plus Playwright end-to-end tests in `frontend/e2e/`.
 
 ---
 
@@ -27,7 +27,7 @@ tests (see `backend/tests/test_auth*.py`, `test_rbac_matrix.py`, `test_cases.py`
 | C3 | Critical | A single shared bearer token grants every write permission; there are no roles | Fixed: per-user accounts with three roles, enforced server-side |
 | C4 | Critical | Audit attribution comes from a client-supplied `X-Analyst` header, so the hash chain faithfully preserves forged identities | Fixed: actor = authenticated user id/email; the header is ignored |
 | H1 | High | Token stored in `localStorage` (readable by any XSS) | Fixed: HttpOnly session cookie; nothing secret in JS-readable storage |
-| H2 | High | Synthetic/demo data generator writes into the same database as real telemetry | Fixed: admin-only, disabled when `TRACELAYER_ALLOW_SYNTHETIC=false`, batches labelled `synthetic` provenance |
+| H2 | High | Synthetic/demo data generator writes into the same database as real telemetry | Fixed: admin-only, disabled when `TRACELAYER_ALLOW_SYNTHETIC=false` (the default in the `prod` compose override), batches carry a `synthetic-*` source shown in the UI; the public demo is a separate static build |
 | H3 | High | `GET /export` has a side effect (audit write) and no auth; CSRF-able via `<img src>` | Fixed: auth + `export` permission; GET remains side-effect-free except the audit record, which is now attributable |
 | H4 | High | Job failures persist Python tracebacks and return them from `/api/pipeline/runs` | Fixed: clients get an error class + id; tracebacks go to the server log only |
 | H5 | High | Integrity engine accepts 5 of 24 adversarial claims in a fresh held-out set (v1 reported 0) | Addressed in Phase 5; see AI_EVALUATION.md for post-fix numbers |
@@ -38,9 +38,9 @@ tests (see `backend/tests/test_auth*.py`, `test_rbac_matrix.py`, `test_cases.py`
 | M4 | Medium | `/docs` and `/openapi.json` publicly exposed | Fixed: disabled unless `TRACELAYER_EXPOSE_DOCS=true` |
 | M5 | Medium | API responses lack CSP/HSTS/Permissions-Policy; nginx lacks HSTS | Fixed: strict API CSP, HSTS when `cookie_secure`, Permissions-Policy |
 | M6 | Medium | App connects to PostgreSQL as the cluster superuser created by the image | Fixed: separate owner (migrations) vs. runtime role with DML-only grants (`docker/postgres/init.sql`) |
-| M7 | Medium | Hash chain verification runs inside the same app against the same DB; the chain head is never anchored externally | Partly fixed: stdlib-only standalone verifier (`tools/verify_bundle.py`, `tools/verify_chain.py`); chain head can be exported for external anchoring. Remains tamper-*evident*, not tamper-*proof* |
+| M7 | Medium | Hash chain verification runs inside the same app against the same DB; the chain head is never anchored externally | Partly fixed: stdlib-only standalone bundle verifier (`tools/verify_bundle.py`, with a tamper test); `tracelayer chain-head` prints the ledger and audit heads for external anchoring; the database role cannot UPDATE/DELETE evidence (M6). Remains tamper-*evident*, not tamper-*proof* |
 | M8 | Medium | `/api/integrity/validate` accepts 500 kB of input with no auth (CPU DoS) | Fixed: auth + permission + 64 kB cap |
-| M9 | Medium | Backend dependencies are lower-bounded only; no lockfile, no vulnerability scanning | Fixed: `uv.lock`, `pip-audit` and `npm audit` in CI |
+| M9 | Medium | Backend dependencies are lower-bounded only; no lockfile, no vulnerability scanning | Fixed: `uv.lock` + hash-pinned `requirements.lock` (Docker installs with `--require-hashes`), `pip-audit` and `npm audit` in CI. Found and fixed: react-router open-redirect advisory (upgraded to 7.18.5) |
 | L1 | Low | `ollama/ollama:latest` and other images are not version-pinned | Fixed: images pinned to explicit versions |
 | L2 | Low | Default Postgres password fallback in compose (`tracelayer-local-only`) | Kept for local use; compose now refuses to start the `prod` profile without an explicit password |
 | L3 | Low | No secret scanning before commits | Fixed: gitleaks job in CI + `make secrets-scan` |
@@ -56,7 +56,8 @@ tests (see `backend/tests/test_auth*.py`, `test_rbac_matrix.py`, `test_cases.py`
   export is a downloaded file and is never rendered by TraceLayer.
 - **Path traversal / decompression bombs:** v1 accepted no archives. v2 adds zip import for public datasets,
   which reads members in memory with member-count, per-member, total-size and compression-ratio limits
-  and never writes member paths to disk (`app/datasets/archive.py`; tests in `test_datasets.py`).
+  and never writes member paths to disk (`app/datasets/archive.py`; tests in `test_datasets.py`). Archives must
+  also match a pinned SHA-256 from the catalogue.
 - **Secrets in git:** `.env`, `*.db` and the WAL files are ignored. A manual scan of the baseline found no
   credentials.
 - **Containers:** the API runs as uid 10001, multi-stage, no compilers. PostgreSQL is not published to the host.
@@ -145,7 +146,7 @@ Anyone with write access to the database can rewrite an event *and* recompute ev
 chain then verifies cleanly. Hash chains detect partial or naive tampering. They do not stop a
 privileged insider. Mitigations in v2: the runtime DB role cannot UPDATE/DELETE evidence tables (M6), the
 chain head can be exported and anchored externally (`tracelayer chain-head`), and stdlib-only verifiers
-let a third party check an export bundle without trusting TraceLayer's code.
+let a third party check an export bundle without trusting TraceLayer's code (`python3 tools/verify_bundle.py bundle.zip`).
 
 ---
 
@@ -161,3 +162,13 @@ let a third party check an export bundle without trusting TraceLayer's code.
    held-out accuracy is well below 100%. The UI requires analyst review for every non-verified claim.
 6. **Local LLM output is untrusted input.** It is schema-validated and every claim is re-verified, but a
    compromised or malicious local model could still waste analyst time. It cannot bypass the approval gate.
+
+## Additional findings during v2 work
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| Markdown report interpolated log fields and model text unescaped: a `|` broke tables, `[x](javascript:…)` became a live link in other viewers | Medium | Fixed: every untrusted value is escaped (`export.md()`), tested |
+| Open redirect via backslash in react-router `<Link>`/`useNavigate` (dependency advisory) | Medium | Fixed: upgraded to 7.18.5 and added an own `safeRedirect` guard on the login redirect, unit-tested |
+| Claim validator parsed arbitrarily large input before rejecting it (131 ms worst case on 24 kB) | Low | Fixed: O(1) size gate before parsing (worst case now under 1 ms) |
+| Public demo snapshot contained the builder session's CSRF token and a lab password inside raw records | Low | Fixed: snapshot scrubbing step; deploy workflow refuses secret-looking content |
+| Login rate limiter could be keyed on a spoofable `X-Forwarded-For` | Medium | Fixed: nginx overwrites the header; the API trusts exactly `TRACELAYER_TRUSTED_PROXIES` hops |

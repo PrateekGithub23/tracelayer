@@ -226,7 +226,7 @@ class AnalysisReview(BaseModel):
 
 class ValidateRequest(BaseModel):
     investigation_id: str
-    output: str = Field(min_length=2, max_length=500_000)
+    output: str = Field(min_length=2, max_length=64_000)  # bounded CPU per request (audit finding M8)
 
 
 class RunOut(ORM):

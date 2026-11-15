@@ -1,67 +1,85 @@
 # Architecture
 
 ```
-                ┌───────────────────────── browser ─────────────────────────┐
-                │ React + TypeScript (Vite)   Cytoscape graph · SVG timeline │
-                │ TanStack Query · evidence inspector · review workflow      │
-                └──────────────────────────────┬─────────────────────────────┘
-                                               │ /api (same origin)
-                                   nginx :8080 │ static files + reverse proxy
-                                               ▼
-┌──────────────────────────────── FastAPI :8000 (one process) ────────────────────────────────┐
-│  api/ingest ─► ingestion.parsers ─► ingestion.pipeline ─► ledger batch + events             │
-│                                                                                             │
-│  jobs (thread pool, status in pipeline_runs)                                               │
-│     └─► detection.engine (9 rules) ─► correlation.engine (union-find) ─► investigations    │
-│                                                                                             │
-│  api/investigations ─► ai.service ─► Ollama (optional) │ deterministic analyst             │
-│                                   └─► integrity.validator (every claim, always)             │
-│                                                                                             │
-│  integrity.ledger (re-hash / re-parse / Merkle / chain) · audit (hash chain) · export (ZIP) │
-└────────────────────────────────────────────┬────────────────────────────────────────────────┘
-                                             │ SQLAlchemy 2.0 · Alembic
-                                   PostgreSQL 16 (Docker)  │  SQLite (dev / tests / benchmarks)
+              ┌──────────────────────────────── browser ────────────────────────────────┐
+              │ React 18 + TypeScript (Vite) · TanStack Query · Cytoscape · Recharts      │
+              │ AuthProvider (session via /api/auth/me) · case workspace · evidence       │
+              │ inspector · guided scenario                                               │
+              │ api.ts ──► Transport ──┬─ HTTP (real app; cookie + X-CSRF-Token)          │
+              │                        └─ demo transport (static build: recorded          │
+              │                           responses + mirrored rules, no network)         │
+              └──────────────────────────────────┬────────────────────────────────────────┘
+                                                 │ /api (same origin)
+                    nginx :8080 (unprivileged)   │ SPA + reverse proxy, auth rate limit, CSP
+                                                 ▼
+┌─────────────────────────────────────── FastAPI (one process) ─────────────────────────────────────┐
+│ middleware: body-size limit · security headers · latency telemetry · sanitised errors              │
+│ api/deps: session → CSRF → Origin → require(permission)   (every route; matrix-tested)            │
+│                                                                                                    │
+│ auth/ (Argon2id, sessions, rate limits, RBAC)   api/auth, api/admin (users, invites, settings)     │
+│ api/ingest ─► ingestion.parsers (native, sshd, winsec, otrf_windows) ─► pipeline ─► ledger         │
+│ datasets/ (pinned catalogue, safe zip reader, importer + evaluation) ─┘                            │
+│ jobs (thread pool, single-flight expensive kinds) ─► detection (11 rules) ─► correlation           │
+│ api/cases (workflow, ownership, SoD, optimistic locking, comments, pins, filters, activity)        │
+│ ai.service ─► Ollama (optional, single-flight) │ deterministic analyst ─► integrity.validator      │
+│ integrity (provenance, ledger verify, extract, validator) · audit (hash chain) · export (ZIP)      │
+└──────────────────────────────────────────┬─────────────────────────────────────────────────────────┘
+                                           │ SQLAlchemy 2 · Alembic (0001–0005)
+            PostgreSQL 16: runtime role tracelayer_app (no UPDATE/DELETE on evidence) │ SQLite (dev/tests)
 ```
 
 ## Data flow
 
-1. **Ingest.** A batch arrives as JSON, an uploaded file, or the synthetic generator. Each record is turned into a `raw` dict (exactly what is stored), hashed (`SHA-256(source ∖n canonical_json(raw))`), parsed into the normalised schema, and deduplicated. The batch gets a Merkle root over its new event hashes and a chain hash linking it to the previous batch.
-2. **Detect.** Rules run over time-ordered `EventView` tuples and emit candidates with a dedup key (rule + entity + window start). The detection id is derived from that key, so re-running is idempotent; extra evidence for an existing detection is merged into it.
-3. **Correlate.** Detections that share an entity (user / host / IP) within a 2-hour window are unioned. Entities seen in more than 30% of a large candidate set are suppressed so one shared server can't merge everything. Each component becomes, or extends, an investigation with a scored, explainable risk breakdown, and its scope is evidence events plus same-entity context events.
-4. **Analyse.** An evidence pack (short refs `E1…En`, quoted single-line fields, injection-flagged events marked) goes to Ollama, or the deterministic analyst writes from templates. Either way, the JSON output is parsed tolerantly but strictly bounded, and every claim is validated.
-5. **Review.** Analysts accept or reject claims. Approval is blocked while any unsupported or contradictory claim is pending. Every decision goes to the hash-chained audit log.
-6. **Export / verify.** The ZIP bundle includes a manifest of file hashes and the ledger head. Full verification re-derives every hash and re-runs every parser.
+1. **Ingest.** JSON, files, catalogued public datasets or the synthetic generator. Each raw record is
+   hashed (`SHA-256(source ∖n canonical_json(raw))`), parsed, deduplicated, committed with a batch
+   Merkle root and chained to the previous batch.
+2. **Detect** (11 ATT&CK-mapped rules, sliding windows) and **correlate** (union-find over shared
+   entities, with suppression of ubiquitous entities) into cases with explainable risk scores.
+3. **Work the case.** Assignment, priority and the state machine New → Triaged → Investigating → Awaiting
+   review → Resolved → Closed (reopen to Investigating), with reasons, reviewer segregation of duties,
+   comments, notes and pinned evidence. Every change goes to the audit chain.
+4. **Analyse.** An evidence pack goes to the local LLM or the deterministic analyst; every claim is
+   verified by the Evidence Integrity Engine; approval is blocked until unsafe claims are handled.
+5. **Report.** Markdown or CSV report, or a ZIP bundle with a hash manifest that `tools/verify_bundle.py`
+   can verify without TraceLayer.
 
-## Key decisions
+## v2 design decisions
 
-| Decision | Alternative considered | Why |
+| Decision | Alternative | Why / trade-off |
 |---|---|---|
-| Modular monolith, one FastAPI process | Microservices | One developer, one machine; module boundaries (ingestion / detection / correlation / integrity / ai) give the separation without the network hops |
-| Sync SQLAlchemy + FastAPI threadpool | async SQLAlchemy | Work is CPU- and DB-bound in short transactions; sync is simpler to reason about and test. Long work is moved off the request path by `jobs` |
-| Thread-pool jobs with a status table | Celery + Redis | Only three job types. A table gives durable status, history and UI polling with zero extra services. Trade-off: queued jobs don't survive a restart (they're marked failed on startup) |
-| Portable schema (String ids, JSON, UTC decorator) | Postgres-only types (JSONB, UUID, INET) | The same migrations run on SQLite, so tests and benchmarks need no server. Dialect-specific code is limited to `INSERT … ON CONFLICT`, an advisory lock, `ANALYZE` and hour bucketing |
-| Content-derived event ids | Random UUIDs | One mechanism gives dedup, idempotent re-ingest and tamper evidence |
-| Keyset pagination | OFFSET | Constant cost for deep pages; stable under concurrent inserts |
-| Rule-based claim validation | LLM-as-judge | A judge model can hallucinate too. Deterministic checks are reproducible, explainable, and need no model |
-| Short citation refs (E12) | Full ids in prompts | Small local models copy short tokens far more reliably and use fewer tokens; refs are deterministic, so they're never stored |
+| Keep React + Vite | Rewrite in Next.js (as the brief assumed) | The frontend is a SPA behind a JSON API with no SEO or SSR need. A rewrite would add a Node server and risk without user-visible benefit. Static builds also make the zero-cost demo trivial. |
+| Server-side sessions, hashed tokens, HttpOnly cookie | JWT in `localStorage` | Instant revocation (role change, logout, "sign out everywhere"), no token theft via XSS, small cost: one indexed lookup per request (`last_seen` written at most once a minute) |
+| Synchronizer CSRF token per session | Double-submit cookie only | Bound to the server session, so it cannot be planted by a sibling subdomain |
+| Permissions, not role checks, on routes | `if role == "admin"` in handlers | One table defines access; the matrix test discovers every route and proves it |
+| Audit log as the case activity source | A separate activity table | One verifiable history; the activity feed is covered by chain verification |
+| `version_id_col` optimistic locking | Pessimistic row locks | No lock waits for a slow analyst; the UPDATE is atomic (`WHERE version = :seen`); the UI shows a clear conflict message |
+| Removed shared API token | Keep it as an "automation" credential | A shared secret bypasses RBAC by design (audit C2/C3); automation uses the CLI |
+| Pinned dataset catalogue + in-memory zip reading | Arbitrary URL import, extract to disk | No SSRF and no path traversal by construction; tampered upstream archives are refused |
+| Demo = recorded real responses + browser transport | Hosted backend, or screenshots | $0, always on, nothing to attack, and the numbers are genuine engine output |
+| DB-enforced evidence immutability | Application checks only | A compromised API process still cannot rewrite or erase evidence |
+| Rule-based claim validation (kept) | LLM-as-judge or embeddings | A judge can hallucinate; similarity is not verification. Deterministic checks are reproducible and explainable |
 
-## Concurrency and consistency
-
-* **Ledger appends** are serialised: a process-wide lock, plus `pg_advisory_xact_lock` on PostgreSQL for multi-worker deployments. The dedup lookup happens inside the lock, so two concurrent batches can never both claim the same event in their Merkle roots. A test with 8 concurrent writers checks this.
-* **Detection + correlation** runs under a pipeline lock, so two runs can't race on investigation assignment.
-* **Audit entries** are appended under a lock in the same transaction as the change they describe.
+Earlier v1 decisions (modular monolith, thread-pool jobs, portable schema, content-derived ids, keyset
+pagination, short citation refs) still apply. See git history for the v1 architecture page.
 
 ## Module map
 
 | Path | Responsibility |
 |---|---|
-| `backend/app/ingestion/` | parsers (`native`, `sshd`, `winsec`) and the batch pipeline |
-| `backend/app/detection/` | `EventView`, sliding-window helpers, 9 ATT&CK-mapped rules, engine |
-| `backend/app/correlation/` | union-find clustering, scoring, investigation scope |
-| `backend/app/integrity/` | provenance hashing, ledger verification, scope, claim extraction, validator |
-| `backend/app/ai/` | output schema, prompt / evidence pack, Ollama client, deterministic analyst, orchestration |
-| `backend/app/api/` | HTTP routers (ingest, events, investigations + review, system / metrics) |
-| `backend/app/evaluation/` | adversarial suite with held-out cases |
-| `backend/app/benchmarks/` | reproducible stage-by-stage benchmarks |
-| `backend/app/migrations/` | Alembic migrations (a test checks they match the models exactly) |
-| `frontend/src/` | pages, evidence inspector, graph, timeline, analysis review |
+| `backend/app/auth/` | passwords (Argon2id), sessions, RBAC permissions, rate limiter, account service |
+| `backend/app/api/` | routers: auth, admin, cases, investigations, events, ingest, datasets, llm, system |
+| `backend/app/cases.py` | case state machine, ownership and segregation-of-duties rules |
+| `backend/app/ingestion/` | parsers, including the OTRF Windows adapter and credential redaction |
+| `backend/app/datasets/` | catalogue (licences, pinned hashes), safe archive reader, importer and evaluation |
+| `backend/app/detection/`, `correlation/` | rules and engines |
+| `backend/app/integrity/` | provenance, ledger verification, claim extraction, validator |
+| `backend/app/ai/` | prompt and evidence pack, Ollama client, deterministic analyst, orchestration with provenance |
+| `backend/app/evaluation/` | integrity suite: dev v1, regression, dev v2, frozen held-out v2 |
+| `backend/app/benchmarks/` | pipeline benchmark, LLM vs deterministic comparison |
+| `backend/app/demo/` | demo snapshot builder (records real API responses, scrubs secrets) |
+| `backend/app/migrations/` | 0001 v1 schema · 0002 identity · 0003 cases (data-preserving) · 0004 dataset imports · 0005 DB privileges |
+| `frontend/src/lib/` | API client and transports, auth context, case metadata, types |
+| `frontend/src/demo/` | browser-local demo transport |
+| `frontend/e2e/`, `frontend/e2e-demo/` | Playwright suites (real backend; static demo) |
+| `tools/verify_bundle.py` | stdlib-only evidence bundle verifier |
+| `docker/postgres/` | least-privilege runtime role setup |

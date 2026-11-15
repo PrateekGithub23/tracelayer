@@ -1,5 +1,8 @@
 # Evidence Integrity Engine
 
+> **v2:** the engine gained timestamp, homoglyph, negation, conclusion and quantity checks, and a new frozen held-out evaluation. See [AI_EVALUATION.md](AI_EVALUATION.md). The v1 design below still applies.
+
+
 The engine answers two questions an analyst must be able to answer before acting:
 
 1. **Is this evidence what was originally collected?** (provenance)

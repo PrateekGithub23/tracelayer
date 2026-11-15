@@ -1,5 +1,8 @@
 # Benchmarks
 
+> **v2:** these are the v1 results. Reproduced and updated numbers are in [PERFORMANCE.md](PERFORMANCE.md).
+
+
 All numbers below were **measured**: wall-clock `time.perf_counter()` on the stated machine, produced by `app/benchmarks/runner.py`. The raw JSON is in [`benchmarks/results/`](../benchmarks/results). Re-run them yourself; your hardware will differ.
 
 **Machine:** Apple M4 MacBook Air, 16 GB RAM, macOS 26, Python 3.12. PostgreSQL 16 ran in Docker Desktop (Linux VM), with the benchmark running inside the API container.

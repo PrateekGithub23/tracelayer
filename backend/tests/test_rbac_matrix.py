@@ -128,3 +128,17 @@ def test_viewer_cannot_change_findings_even_with_crafted_requests(db_url: str) -
         ]
         for method, url, body in attempts:
             assert c.request(method, url, json=body).status_code == 403, (method, url)
+
+
+def test_expensive_jobs_cannot_stack_and_validator_input_is_bounded(admin_client: TestClient) -> None:
+    """Audit findings M2 and M8."""
+    from app.db import session_scope
+    from app.ids import new_id
+    from app.models import PipelineRun
+
+    with session_scope() as s:
+        s.add(PipelineRun(id=new_id("run"), kind="benchmark", status="running", params={}))
+    r = admin_client.post("/api/reports/benchmark", json={"events": 1000})
+    assert r.status_code == 409 and "already" in r.json()["detail"]
+    big = admin_client.post("/api/integrity/validate", json={"investigation_id": "x", "output": "x" * 70_000})
+    assert big.status_code == 422

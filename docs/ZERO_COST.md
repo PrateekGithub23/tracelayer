@@ -17,7 +17,15 @@ TraceLayer must run with **$0 of additional spending**: no paid APIs, cloud bill
 | Llama 3.2 3B (default model) | Optional local LLM | Llama 3.2 Community Licence (free use, attribution) | Free | No |
 | pytest, ruff, mypy, vitest | Quality tooling | MIT / Apache-2.0 | Free | No |
 | Docker Desktop | Containers on macOS | Free for personal use, education and small businesses (<250 staff and <$10M revenue) | Free for this use | No |
-| GitHub (public repo) + GitHub Actions | Hosting code, CI | Free for public repositories | Free | No |
+| GitHub (public repo) + GitHub Actions | Hosting code, CI | Standard runners free for public repositories (GitHub docs) | Free | No |
+| **v2 additions** | | | | |
+| argon2-cffi | Argon2id password hashing | MIT | Free | No |
+| uv | Python lockfile and installs | MIT / Apache-2.0 | Free | No |
+| Playwright + Chromium | Browser end-to-end tests | Apache-2.0 | Free | No |
+| gitleaks, pip-audit, actionlint | Secret scan, dependency audit, workflow lint | MIT / Apache-2.0 / MIT | Free | No |
+| OTRF Security-Datasets | Real (lab) Windows telemetry | MIT, © 2021 Open Threat Research Forge | Free | No |
+| GitHub Pages | Hosting the static public demo | Free for public repositories (1 GB site, soft 100 GB/month) | Free | No |
+| nginx-unprivileged image | Non-root UI container | BSD-2 | Free | No |
 
 **Alternative to Docker Desktop:** [Colima](https://github.com/abiosoft/colima) (MIT, `brew install colima docker docker-compose`) runs the same Compose file with no licence conditions at all.
 
@@ -27,10 +35,18 @@ TraceLayer must run with **$0 of additional spending**: no paid APIs, cloud bill
 |---|---|---|
 | OpenAI / Anthropic / other hosted LLM APIs | Usage-billed; need an API key and payment method. A Claude.ai subscription does **not** include API credits. | Ollama (local) + a deterministic analyst that needs no model at all |
 | Managed Postgres, Redis, queues (RDS, Supabase, Upstash…) | Free tiers usually need a card, expire, or sleep | Local PostgreSQL in Compose; in-process thread-pool jobs persisted in a table |
-| Hosted deployment (Vercel, Render, Fly…) | Cards, sleep policies and limits change often | Runs locally with one command; screenshots and recorded benchmarks show it in action |
+| Hosted full-stack deployment (Render, Fly, Railway, HF Docker Spaces…) | Render's free Postgres is deleted after 30 days with no backups; HF Docker Spaces need a paid plan; others need cards or credits (see DEPLOYMENT.md) | Static, browser-only public demo on GitHub Pages + the full stack locally |
 | Elasticsearch / OpenSearch | Heavy (≥2 GB RAM) and unnecessary at this scale | Indexed SQL queries (sub-millisecond p50 at 100k events, see BENCHMARKS.md) |
 | Prometheus / Grafana | Two more services for one dashboard | In-process latency percentiles + measured benchmark reports in the DB |
 | Commercial threat intel / GeoIP feeds | Paid or need registration | Country codes in the telemetry + a built-in centroid table |
+
+## Verification (2026-11-15)
+
+Every v2 component above was installed and used during development with no account upgrade, trial or
+payment method: Ollama via Homebrew, `llama3.2:3b` pulled locally, OTRF archives downloaded from
+GitHub, Playwright's Chromium, gitleaks via Homebrew, pip-audit via `uvx`, and actionlint and Postgres
+as Docker images. The only planned public artifact (the demo on GitHub Pages) needs a free GitHub
+account and a public repository.
 
 ## Apple Silicon resource budget (measured on an M4 MacBook Air, 16 GB)
 

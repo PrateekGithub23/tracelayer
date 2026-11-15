@@ -1,113 +1,141 @@
 # TraceLayer
 
-**An evidence-driven security investigation platform where AI has to prove what it says.**
+**A security investigation platform where AI has to prove what it says.**
 
-TraceLayer ingests security telemetry, detects and correlates attacker activity into investigations, and lets an AI (a local LLM, or a deterministic fallback) write the analysis. Then it **checks every sentence against the evidence it cites**. Fabricated citations, invented IPs, inflated counts, reversed timelines, misattributed actions and prompt-injected "this is benign" conclusions are caught, labelled, and block approval until an analyst deals with them.
+TraceLayer ingests security telemetry into a tamper-evident ledger, detects and correlates attacker
+activity into cases, and lets analysts work those cases together. It also lets an AI (a local LLM or a
+deterministic analyst) draft the investigation, **then checks every sentence against the events it cites**.
+Fabricated citations, invented hosts, wrong times, inflated counts, homoglyph identities and "this was just
+maintenance" dismissals are caught, explained, and block approval until a human decides.
 
-Runs entirely on a laptop. **No paid APIs, no cloud, no API keys, no credit card.**
+Runs entirely on a laptop. **No paid APIs, no cloud bill, no credit card.**
 
-![Investigation workspace](docs/screenshots/analysis.png)
+![Investigation workspace](docs/screenshots/desktop-case.png)
+
+## The problem
+
+Small local models write fluent incident reports, and much of what they write is wrong. In TraceLayer's
+benchmark, `llama3.2:3b` produced schema-valid JSON in **15/15** runs, yet **57%** of its claims were
+unsupported or contradicted by the evidence. Analysts cannot re-check every sentence by hand.
+TraceLayer does it deterministically, in about 0.14 ms per claim, and shows its reasoning.
 
 ## Highlights
 
-- **Evidence Integrity Engine.** Six verdicts per claim: verified observation · heuristic correlation · AI hypothesis · missing evidence · unsupported · contradictory. Every verdict comes with reasons. [How it works →](docs/EVIDENCE_INTEGRITY.md)
-- **Adversarially evaluated.** 47 labelled cases (31 hostile), 16 held-out paraphrases, and 13 malformed-output checks. **0 unsafe acceptances on both sets.** The held-out set found a real flaw, which was fixed with a general rule. [Results →](docs/EVIDENCE_INTEGRITY.md#3-evaluation)
-- **Tamper-evident evidence.** SHA-256 per raw record, Merkle root per ingest batch, and a hash chain across batches. Verification *re-runs the parsers* to prove normalised fields weren't edited. Analyst decisions are hash-chained too.
-- **Real detection and correlation.** 9 ATT&CK-mapped rules with O(n) sliding windows, and union-find correlation with ubiquitous-entity suppression and explainable risk scores. At 100k events: **100% rule recall, 0 false positives.**
-- **Prompt-injection aware.** Attacker text planted in logs is tagged at ingest, quoted and flagged in prompts, and any conclusion built on it is rejected by the validator.
-- **Analyst workflow.** Claim-by-claim review; approval is blocked server-side while unsafe claims are pending; overriding the engine requires a written justification.
-- **Self-verifying exports.** A ZIP evidence bundle with a hash manifest; recipients can re-derive every event hash without TraceLayer.
-- **Measured performance.** ~22k events/s ingest (SQLite), ~105–118k events/s detection, 0.3 ms per claim validation, sub-millisecond indexed queries at 100k events. [Benchmarks →](docs/BENCHMARKS.md)
+- **Evidence Integrity Engine.** Six verdicts per claim with reasons and a stage trace. On a frozen 40-case
+  adversarial held-out set, v2 scores **97.5%** with **0 dangerous false verifications** (v1 engine: 62.5%,
+  5). [Evaluation →](docs/AI_EVALUATION.md)
+- **Real telemetry.** A complete adapter for OTRF Security-Datasets (Windows Security, Sysmon, PowerShell;
+  MIT). It found a timezone trap, credentials in logs and a mislabelled rule, and a held-out attack dataset
+  was then detected. [Findings →](docs/REAL_WORLD_DATA_EVALUATION.md)
+- **Multi-user and secure by default.** Argon2id accounts, HttpOnly server-side sessions, CSRF tokens,
+  three roles, and a test that checks **all 79 API routes × every role**. [Auth →](docs/AUTHENTICATION.md)
+- **Case management.** New → Triaged → Investigating → Awaiting review → Resolved → Closed, with reasons,
+  owner and reviewer (segregation of duties), notes, pinned evidence and optimistic locking.
+- **Tamper-evident evidence.** SHA-256 per record, Merkle roots, a hash-chained ledger and audit log;
+  PostgreSQL itself refuses to UPDATE or DELETE evidence from the app's role; exported bundles verify with
+  a ~70-line standard-library script.
+- **Local LLM, honestly labelled.** Ollama + llama3.2:3b, with the model digest, version, latency and
+  JSON validity recorded on every analysis. Fallbacks are labelled, never silent.
+- **Free public demo.** A static, backend-free build that replays real recorded API responses and enforces
+  the same workflow rules in the browser.
 
-| Entity graph (every edge opens its events) | Timeline (detections over swimlanes) |
-|---|---|
-| ![graph](docs/screenshots/graph.png) | ![timeline](docs/screenshots/timeline.png) |
-| **Overview (all numbers from SQL)** | **Performance (measured, not estimated)** |
-| ![overview](docs/screenshots/overview.png) | ![performance](docs/screenshots/performance.png) |
+| Guided scenario | Evidence verification | Real dataset results |
+|---|---|---|
+| ![walkthrough](docs/screenshots/desktop-walkthrough.png) | ![analysis](docs/screenshots/desktop-analysis.png) | ![datasets](docs/screenshots/desktop-datasets.png) |
+| **Entity graph** | **Timeline** | **Case activity (hash-chained)** |
+| ![graph](docs/screenshots/desktop-graph.png) | ![timeline](docs/screenshots/desktop-timeline.png) | ![activity](docs/screenshots/desktop-activity.png) |
 
-## Quick start
+## Try it
 
-### Option A: Docker (PostgreSQL + API + UI)
+**Public demo:** not published yet (see [DEPLOYMENT.md](docs/DEPLOYMENT.md) to publish it on GitHub Pages
+for free). Locally: `cd frontend && npm run build:demo && VITE_DEMO=1 npx vite preview`, then
+choose **Start the guided scenario**: *"The Suspicious Login That Wasn't Just a Login"*, eight steps, about two minutes.
 
-```bash
-docker compose up --build -d
-open http://localhost:8080          # Ingest & system → "Generate, ingest & detect"
-```
-
-### Option B: local dev (SQLite, hot reload)
-
-```bash
-make setup                          # uv + npm install
-make dev-api                        # API on :8000 (migrates automatically)
-make dev-ui                         # UI on :5173 (separate terminal)
-```
-
-Then open the UI, go to **Ingest & system**, and click **Generate, ingest & detect**. Or upload the files in [`samples/`](samples/).
-
-### Optional: local LLM (free, on-device)
+**Full application (Docker):**
 
 ```bash
-brew install ollama && ollama serve &
-ollama pull llama3.2:3b             # ~2 GB; uses the Apple Silicon GPU when run natively
+cp .env.example .env               # set two database passwords
+docker compose up --build -d       # http://localhost:8080
+make create-admin                  # first administrator (prompts for a password)
 ```
 
-With engine **Auto**, TraceLayer uses the model when it's available and the deterministic analyst when it isn't. Either way, the same validator runs. See [docs/ZERO_COST.md](docs/ZERO_COST.md) for resource needs and alternatives.
+Then go to **Ingest → Generate, ingest & detect**, or **Datasets → Import & evaluate**.
 
-## A 5-minute demo
+**Local development (SQLite, hot reload):** `make setup`, `make create-admin-local`, then `make dev-api`
+and `make dev-ui` (http://localhost:5173).
 
-1. **Generate** the scenario: a 7-stage intrusion (brute force → compromised login with impossible travel → encoded PowerShell and certutil → Domain Admins → lateral movement → 384 MB exfiltration → log clearing), plus an unrelated SSH brute force, benign noise, duplicates, and a log line that tries to tell AI analysts the incident is "an authorized red team test".
-2. **Investigations** shows two cases, critical and medium. The lone low-severity `whoami` correctly stays a standalone detection.
-3. Open the critical one. The kill-chain strip, telemetry blind spots (`db-01` and `hr-01` have no process logs), timeline, and graph are all built from stored events.
-4. **AI analysis → Generate.** Every claim is labelled. Click any `E123` citation to see the raw record, its hash, and its ledger position.
-5. **Evidence integrity → Validation playground.** Paste a hallucinated analysis and watch the fabrications get caught. **Adversarial evaluation → Run** produces the measured numbers above.
-6. Approve the analysis, then export the evidence bundle and check its `manifest.json`.
-7. Tamper with an event in the database (`UPDATE events SET username='x' …`), then **Run full verification**. The exact event and field are reported.
+**Optional local LLM:** `brew install ollama && ollama serve & ollama pull llama3.2:3b` (~2 GB; run it
+natively so it can use the Apple GPU). Without it, everything works with the deterministic analyst.
 
 ## Architecture
 
-FastAPI (Python 3.12, SQLAlchemy 2, Alembic) · PostgreSQL 16 or SQLite · React 18 + TypeScript + Vite + Tailwind · Cytoscape.js · Recharts · Ollama (optional). It's a modular monolith with a thread-pool job runner; no Redis, Celery, Elasticsearch, or cloud services. [Architecture and decisions →](docs/ARCHITECTURE.md)
-
 ```
-backend/app/
-  ingestion/     parsers (native JSON, sshd syslog, Windows Security) + batch pipeline
-  detection/     9 rules, sliding-window helpers, engine
-  correlation/   union-find clustering, scoring, investigation scope
-  integrity/     provenance, ledger verification, claim extraction + validator
-  ai/            Ollama client, evidence pack/prompt, deterministic analyst, orchestration
-  api/           HTTP routers (OpenAPI docs at /docs)
-  evaluation/    adversarial suite      benchmarks/  reproducible benchmarks
-frontend/src/    pages, evidence inspector, graph, timeline, analysis review
+React + TS (Vite) ──/api──► nginx ──► FastAPI (auth · RBAC · cases · ingest · datasets · detection ·
+       │                              correlation · AI + Evidence Integrity Engine · audit · export)
+       └─ demo transport (static build, no backend)          │
+                                     PostgreSQL 16 (least-privilege role) / SQLite · Ollama (optional)
 ```
 
-## Quality
+A modular monolith: one FastAPI process, a thread-pool job runner, no Redis, Celery or Elasticsearch.
+[Architecture and decisions →](docs/ARCHITECTURE.md)
+
+**Stack:** Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic, argon2-cffi · PostgreSQL 16 / SQLite ·
+React 18, TypeScript, Vite, Tailwind, TanStack Query, Cytoscape.js, Recharts · Ollama · pytest, vitest,
+Playwright · Docker Compose · GitHub Actions.
+
+## Measured results
+
+| | Result | Source |
+|---|---|---|
+| Ingest, 100k events | **23,904/s** SQLite · **16,728–17,273/s** PostgreSQL (warm) | [PERFORMANCE.md](docs/PERFORMANCE.md) |
+| Detection, 100k events | ~119k events/s; **100% rule recall, 0 false positives** (11 rules) | same |
+| Claim validation | p50 **0.14 ms**, p95 0.26 ms | [AI_EVALUATION.md](docs/AI_EVALUATION.md) |
+| Held-out adversarial claims (40) | **97.5%**, 0 false verifications, 0 false rejections (official run) | same |
+| Real lab telemetry (OTRF) | 18,661 events, 0 rejected; held-out technique detected (1/1) | [REAL_WORLD_DATA_EVALUATION.md](docs/REAL_WORLD_DATA_EVALUATION.md) |
+| llama3.2:3b vs deterministic | 18.6 s vs 1 ms; 57% vs 0% unsafe claims; 0 invalid JSON | [AI_EVALUATION.md](docs/AI_EVALUATION.md) |
+
+## Testing
 
 ```bash
-make test      # 58 backend tests (pytest) + 9 frontend tests (vitest)
-make lint      # ruff, mypy (app is clean), tsc --strict
-make eval      # adversarial integrity evaluation
-make bench     # 100k-event benchmark
+make test      # 110 backend tests (pytest) + 10 frontend unit tests (vitest)
+make e2e       # 8 Playwright tests against the real API; plus 5 on the static demo (see Makefile)
+make lint      # ruff, mypy, tsc --strict
+make eval      # integrity evaluation: dev, regression, dev v2, frozen held-out v2
+make bench     # 100k-event pipeline benchmark
+make secrets-scan audit-deps   # gitleaks, pip-audit, npm audit
 ```
 
-The tests cover parsers; dedup and concurrent ledger appends; tamper detection of raw records, normalised fields, deleted events and batches; every core rule's thresholds; false-positive regressions at scale; correlation; the full API flow with a mocked hallucinating LLM; the approval gate; auth; fallback behaviour; self-verifying exports; and migrations matching models exactly. CI runs on GitHub Actions (free for public repos), including a PostgreSQL job.
+CI (GitHub Actions, free for public repositories) runs all of the above plus a PostgreSQL job that checks
+migrations and database privileges.
+
+## Security design
+
+Server-side sessions and permissions on every route; per-session CSRF; uniform login errors and rate limits;
+segregation of duties for case review; strict CSP and headers; sanitised errors; escaped exports; safe,
+hash-pinned dataset import; database-enforced evidence immutability; non-root, read-only containers;
+hash-pinned dependencies and SHA-pinned CI actions. Hash chains are **tamper-evident, not tamper-proof**.
+[Security design →](docs/SECURITY.md) · [Audit findings →](docs/V2_SECURITY_AUDIT.md)
+
+## Known limitations
+
+Lab and synthetic data only, so there is no real-network false-positive rate. The rule-based claim parser
+fails safe but rejects unfamiliar phrasing. A 3B model is slow and often wrong. There is no MFA or SSO, and
+it runs on a single node. The public artifact is a read-only demo, because no free host keeps a database.
+[Full list →](docs/LIMITATIONS.md)
 
 ## Documentation
 
-| Doc | Contents |
+| | |
 |---|---|
-| [docs/FEATURE_GUIDE.md](docs/FEATURE_GUIDE.md) | Every feature: what, files, how, why, tests, risks, how to explain it |
-| [docs/EVIDENCE_INTEGRITY.md](docs/EVIDENCE_INTEGRITY.md) | Provenance design, validation pipeline, evaluation results and limitations |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Data flow, module map, design decisions and trade-offs |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Measured results and the four defects benchmarking found |
-| [docs/ZERO_COST.md](docs/ZERO_COST.md) | Licence and cost of every component, resource budget, fallbacks |
-| [SECURITY.md](SECURITY.md) | Controls in place and known limitations |
+| [FEATURE_GUIDE](docs/FEATURE_GUIDE.md) | every feature: what, where, why, tests, how to explain it |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | data flow, module map, design decisions |
+| [AUTHENTICATION](docs/AUTHENTICATION.md) · [SECURITY](docs/SECURITY.md) · [V2_SECURITY_AUDIT](docs/V2_SECURITY_AUDIT.md) | access control, threat model, findings |
+| [AI_EVALUATION](docs/AI_EVALUATION.md) · [EVIDENCE_INTEGRITY](docs/EVIDENCE_INTEGRITY.md) | engine design and measured results, LLM benchmark |
+| [REAL_WORLD_DATA_EVALUATION](docs/REAL_WORLD_DATA_EVALUATION.md) | public dataset selection, adapter, detection results |
+| [PERFORMANCE](docs/PERFORMANCE.md) · [DEPLOYMENT](docs/DEPLOYMENT.md) · [ZERO_COST](docs/ZERO_COST.md) | benchmarks, hosting options, $0 verification |
+| [LIMITATIONS](docs/LIMITATIONS.md) · [PORTFOLIO](docs/PORTFOLIO.md) | what's missing; resume bullets and interview notes |
 
-## Honest limitations
+## Data and licences
 
-- Synthetic data. The scenario is realistic enough to exercise every path, but it's generated. The parsers, detection, correlation, validation and measurements are real.
-- Claim validation is rule-based. Unusual phrasing isn't understood; it fails *safe*, as unsupported, but that's a false rejection the analyst has to handle.
-- Tamper-evident, not tamper-proof (anchor the chain head externally). Single shared API token, not per-user auth.
-- Single process. Background jobs are in-process; scaling out would need an external queue.
-
-## License
-
-MIT
+Synthetic data is generated by TraceLayer. Public telemetry: OTRF Security-Datasets, MIT License,
+© 2021 Open Threat Research Forge. TraceLayer itself is MIT-licensed.

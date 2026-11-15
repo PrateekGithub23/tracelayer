@@ -2,7 +2,7 @@
 """
 Independently verify a TraceLayer evidence bundle (ZIP) using only the Python standard library.
 
-This file deliberately imports nothing from TraceLayer: a recipient can audit these ~80 lines and run
+This file deliberately imports nothing from TraceLayer: a recipient can audit these ~70 lines and run
 them without trusting TraceLayer's code. It checks:
 
   1. every file listed in manifest.json has the stated SHA-256, and bundle_sha256 covers the file list;
