@@ -413,6 +413,76 @@ class LocalAccountCreated(Rule):
         return out
 
 
+class LsassMemoryAccess(Rule):
+    """ATT&CK T1003.001 (OS Credential Dumping: LSASS Memory). Written from public guidance (ATT&CK data
+    source "Process: Process Access"; the widely used Sigma pattern of read-capable GrantedAccess masks on
+    lsass.exe) *before* any dataset containing this technique was inspected (v3)."""
+
+    id = "TL-CRED-001"
+    name = "LSASS memory access"
+    severity = "critical"
+    tactic = "credential-access"
+    technique = "T1003.001"
+    description = (
+        "A process opened lsass.exe with memory-read rights (credential dumping), excluding known system accessors."
+    )
+    event_types = frozenset({"process.access"})
+    # Masks that include PROCESS_VM_READ (0x10) or full access, as used by credential dumpers.
+    _masks = {"0x1010", "0x1410", "0x1418", "0x1438", "0x143a", "0x1f0fff", "0x1f1fff", "0x1f2fff", "0x1f3fff",
+              "0x1fffff", "0x40"}  # fmt: skip
+    # Documented benign accessors (known false-positive sources); anything else is reported.
+    _benign = {"wininit.exe", "csrss.exe", "lsm.exe", "msmpeng.exe", "mrt.exe", "vmtoolsd.exe", "wmiprvse.exe"}
+
+    def evaluate(self, events: list[EventView]) -> list[Candidate]:
+        groups: dict[tuple[str, str], list[EventView]] = defaultdict(list)
+        for e in events:
+            a = e.attributes or {}
+            if (e.event_type == "process.access" and str(a.get("target_process") or "").lower() == "lsass.exe"
+                    and str(a.get("granted_access") or "").lower() in self._masks
+                    and (e.process or "").lower() not in self._benign):  # fmt: skip
+                groups[(e.host or "?", e.process or "?")].append(e)
+        out = []
+        for (host, proc), evs in groups.items():
+            for run in bursts(sorted(evs, key=lambda x: x.timestamp), timedelta(minutes=30)):
+                masks = sorted({str((x.attributes or {}).get("granted_access")) for x in run})
+                out.append(self.candidate(
+                    key=f"{host}|{proc}|{bucket(run[0].timestamp)}", events=run, confidence=0.85,
+                    summary=f"{proc} on {host} opened lsass.exe with access {', '.join(masks)} ({len(run)} time(s))",
+                    entities=ent("host", host),
+                ))  # fmt: skip
+        return out
+
+
+class RegistryRunKey(Rule):
+    """ATT&CK T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys). Data source "Windows Registry:
+    Registry Key Modification" (Sysmon 13). Written before the validating dataset was inspected (v3)."""
+
+    id = "TL-PERS-002"
+    name = "Registry Run key persistence"
+    severity = "high"
+    tactic = "persistence"
+    technique = "T1547.001"
+    description = "A value was set under a Run/RunOnce autostart key, so a program will start at logon or boot."
+    event_types = frozenset({"registry.change"})
+    _key = re.compile(r"\\software\\(?:wow6432node\\)?microsoft\\windows\\currentversion\\"
+                      r"(?:run|runonce|runservices|runservicesonce|policies\\explorer\\run)\\", re.I)  # fmt: skip
+
+    def evaluate(self, events: list[EventView]) -> list[Candidate]:
+        out = []
+        for e in events:
+            a = e.attributes or {}
+            key = str(a.get("registry_key") or "")
+            if e.event_type != "registry.change" or not self._key.search(key) or a.get("event_id") != 13:
+                continue
+            value_name = key.rsplit("\\", 1)[-1]
+            out.append(self.candidate(
+                key=f"{e.host}|{key.lower()}|{bucket(e.timestamp)}", events=[e], confidence=0.75,
+                summary=f"{e.process or 'unknown process'} on {e.host or '?'} set autostart value '{value_name}'",
+                entities=ent("host", e.host) + ent("user", e.username),
+            ))  # fmt: skip
+        return out
+
+
 class TelemetryInjection(Rule):
     id = "TL-AI-001"
     name = "Adversarial instructions embedded in telemetry"
@@ -443,6 +513,7 @@ class TelemetryInjection(Rule):
 ALL_RULES: list[Rule] = [
     BruteForce(), SuccessAfterFailures(), ImpossibleTravel(), SuspiciousProcess(), PrivilegeEscalation(),
     LateralMovement(), Exfiltration(), LogTampering(), TelemetryInjection(), RemoteWmiExecution(), LocalAccountCreated(),
+    LsassMemoryAccess(), RegistryRunKey(),
 ]  # fmt: skip
 
 assert all(r.severity in SEVERITY_ORDER for r in ALL_RULES)
