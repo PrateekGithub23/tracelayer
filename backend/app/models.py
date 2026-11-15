@@ -180,20 +180,34 @@ class Investigation(Base):
 
     id: Mapped[str] = mapped_column(String(24), primary_key=True)
     title: Mapped[str] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    # new | triaged | investigating | awaiting_review | resolved | closed  (see app/cases.py)
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     severity: Mapped[str] = mapped_column(String(10), index=True)
+    priority: Mapped[str] = mapped_column(String(2), default="P3", index=True)  # P1 (urgent) .. P4
     score: Mapped[float] = mapped_column(Float)
     score_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime())
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime())
     entities: Mapped[list[Any]] = mapped_column(JSON, default=list)
     tactics: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    assignee: Mapped[str | None] = mapped_column(String(100))
+    # v1 stored a free-text assignee name; kept (read-only) so the migration never discards data.
+    legacy_assignee: Mapped[str | None] = mapped_column(String(100))
+    assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    reviewer_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    resolution: Mapped[str | None] = mapped_column(String(30))
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    reopen_count: Mapped[int] = mapped_column(Integer, default=0)
     approved_analysis_id: Mapped[str | None] = mapped_column(String(24))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow, index=True)
+    # Optimistic locking: every UPDATE is "... WHERE id = :id AND version = :seen", so concurrent writers
+    # cannot silently overwrite each other (SQLAlchemy raises StaleDataError; the API returns 409).
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
     detections: Mapped[list[Detection]] = relationship(back_populates="investigation")
+
+    __mapper_args__ = {"version_id_col": version}
 
 
 # --------------------------------------------------------------------------- AI + integrity
@@ -389,3 +403,46 @@ class AppSetting(Base):
     value: Mapped[dict[str, Any]] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
     updated_by: Mapped[str | None] = mapped_column(String(24))
+
+
+# --------------------------------------------------------------------------- case collaboration (v2)
+
+
+class CaseComment(Base):
+    """Analyst discussion (kind=comment) and longer-lived investigation notes (kind=note)."""
+
+    __tablename__ = "case_comments"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    investigation_id: Mapped[str] = mapped_column(ForeignKey("investigations.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    edited_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())  # soft delete; the audit log keeps a hash
+
+
+class CaseEvidence(Base):
+    """An analyst-pinned reference from a case to an event (does not alter the event or the case scope)."""
+
+    __tablename__ = "case_evidence"
+
+    investigation_id: Mapped[str] = mapped_column(ForeignKey("investigations.id", ondelete="CASCADE"), primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), primary_key=True)
+    added_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class SavedFilter(Base):
+    """A user's private saved search over investigations or events."""
+
+    __tablename__ = "saved_filters"
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    scope: Mapped[str] = mapped_column(String(20))  # investigations | events
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

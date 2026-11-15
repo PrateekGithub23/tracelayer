@@ -131,7 +131,15 @@ class InvestigationOut(ORM):
     last_seen: datetime
     entities: list[dict[str, Any]]
     tactics: list[str]
-    assignee: str | None
+    priority: str
+    assignee_id: str | None
+    reviewer_id: str | None
+    legacy_assignee: str | None
+    resolution: str | None
+    resolved_at: datetime | None
+    closed_at: datetime | None
+    reopen_count: int
+    version: int
     approved_analysis_id: str | None
     created_at: datetime
     updated_at: datetime
@@ -150,9 +158,18 @@ class InvestigationDetail(InvestigationOut):
 
 
 class InvestigationPatch(BaseModel):
-    status: Literal["open", "in_review", "closed", "false_positive"] | None = None
-    assignee: str | None = Field(default=None, max_length=100)
-    note: str | None = Field(default=None, max_length=2000)
+    """A case update. `expected_version` is mandatory: it is how lost updates are detected."""
+
+    expected_version: int = Field(ge=1)
+    status: Literal["new", "triaged", "investigating", "awaiting_review", "resolved", "closed"] | None = None
+    priority: Literal["P1", "P2", "P3", "P4"] | None = None
+    # "" clears the field; None leaves it unchanged.
+    assignee_id: str | None = Field(default=None, max_length=24)
+    reviewer_id: str | None = Field(default=None, max_length=24)
+    resolution: (
+        Literal["true_positive", "benign_true_positive", "false_positive", "duplicate", "unspecified"] | None
+    ) = None
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 # --------------------------------------------------------------------------- analyses

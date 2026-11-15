@@ -12,6 +12,7 @@ from app.ai.service import ollama_client
 from app.api.deps import require
 from app.audit import verify_audit_chain
 from app.auth.sessions import Principal
+from app.cases import OPEN_STATUSES
 from app.config import get_settings
 from app.db import get_db
 from app.db_utils import count_map
@@ -79,7 +80,7 @@ def overview(db: Session = Depends(get_db), _: Principal = Depends(require("metr
         .order_by(func.count().desc()))]  # fmt: skip
     inv_by_status = count_map(db, select(Investigation.status, func.count()).group_by(Investigation.status))
     inv_by_sev = count_map(db, select(Investigation.severity, func.count())
-                                 .where(Investigation.status.in_(["open", "in_review"]))
+                                 .where(Investigation.status.in_(OPEN_STATUSES))
                                  .group_by(Investigation.severity))  # fmt: skip
     verdicts = count_map(db, select(Claim.verdict, func.count()).group_by(Claim.verdict))
     analyses_by_status = count_map(db, select(AIAnalysis.status, func.count()).group_by(AIAnalysis.status))

@@ -30,6 +30,7 @@ from typing import Any
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
+from app.cases import OPEN_STATUSES, SEVERITY_PRIORITY
 from app.config import get_settings
 from app.db_utils import insert_ignore
 from app.detection.base import SEVERITY_ORDER, SEVERITY_WEIGHT
@@ -41,7 +42,7 @@ KILL_CHAIN = [
     "defense-evasion", "lateral-movement", "exfiltration",
 ]  # fmt: skip
 LINKABLE = {"user", "host", "ip"}
-OPEN_STATUSES = ("open", "in_review")
+# Resolved and closed cases are never extended (app.cases.OPEN_STATUSES): closing freezes the evidence scope.
 
 
 class UnionFind:
@@ -205,7 +206,7 @@ def run_correlation(db: Session, window_minutes: int | None = None) -> dict[str,
             if len(cluster) == 1 and cluster[0].severity == "low":
                 continue
             first = min(d.first_seen for d in cluster)
-            inv = Investigation(id=new_id("inv"), title="pending", status="open", severity="low", score=0,
+            inv = Investigation(id=new_id("inv"), title="pending", status="new", severity="low", score=0,
                                 first_seen=first, last_seen=first)  # fmt: skip
             db.add(inv)
             db.flush()
@@ -215,6 +216,8 @@ def run_correlation(db: Session, window_minutes: int | None = None) -> dict[str,
             d.investigation_id = inv.id
         db.flush()
         refresh_investigation(db, inv)
+        if not existing:  # initial priority follows severity; afterwards it belongs to the analysts
+            inv.priority = SEVERITY_PRIORITY.get(inv.severity, "P3")
         touched.append(inv.id)
 
     return {

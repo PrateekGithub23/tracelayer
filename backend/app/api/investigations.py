@@ -37,9 +37,7 @@ from app.schemas import (
     ClaimReview,
     DetectionOut,
     InvestigationDetail,
-    InvestigationListItem,
     InvestigationOut,
-    InvestigationPatch,
     ValidateRequest,
 )
 
@@ -92,32 +90,6 @@ def list_rules(_: Principal = Depends(require("detections:read"))) -> list[dict[
 # --------------------------------------------------------------------------- investigations
 
 
-@router.get("/investigations", response_model=list[InvestigationListItem])
-def list_investigations(
-    status: str | None = None,
-    severity: str | None = None,
-    q: str | None = None,
-    db: Session = Depends(get_db),
-    _: Principal = Depends(require("investigations:read")),
-) -> list[InvestigationListItem]:
-    stmt = select(Investigation).order_by(Investigation.score.desc(), Investigation.created_at.desc())
-    if status:
-        stmt = stmt.where(Investigation.status == status)
-    if severity:
-        stmt = stmt.where(Investigation.severity == severity)
-    if q:
-        stmt = stmt.where(Investigation.title.ilike(f"%{q[:100]}%"))
-    invs = list(db.scalars(stmt.limit(500)))
-    ids = [i.id for i in invs]
-    det_counts = count_map(db, select(Detection.investigation_id, func.count()).where(
-        Detection.investigation_id.in_(ids)).group_by(Detection.investigation_id))  # fmt: skip
-    ev_counts = count_map(db, select(InvestigationEvent.investigation_id, func.count()).where(
-        InvestigationEvent.investigation_id.in_(ids)).group_by(InvestigationEvent.investigation_id))  # fmt: skip
-    return [InvestigationListItem(**InvestigationOut.model_validate(i).model_dump(),
-                                  detection_count=det_counts.get(i.id, 0), event_count=ev_counts.get(i.id, 0))
-            for i in invs]  # fmt: skip
-
-
 @router.get("/investigations/{inv_id}", response_model=InvestigationDetail)
 def get_investigation(
     inv_id: str, db: Session = Depends(get_db), _: Principal = Depends(require("investigations:read"))
@@ -149,25 +121,6 @@ def get_investigation(
             for a in analyses
         ],  # fmt: skip
     )
-
-
-@router.patch("/investigations/{inv_id}", response_model=InvestigationOut)
-def patch_investigation(inv_id: str, body: InvestigationPatch, db: Session = Depends(get_db),
-                        p: Principal = Depends(require("investigations:write"))) -> Investigation:  # fmt: skip
-    inv = _inv(db, inv_id)
-    changes: dict[str, Any] = {}
-    if body.status and body.status != inv.status:
-        changes["status"] = [inv.status, body.status]
-        inv.status = body.status
-    if body.assignee is not None and body.assignee != inv.assignee:
-        changes["assignee"] = [inv.assignee, body.assignee]
-        inv.assignee = body.assignee or None
-    if changes:
-        inv.updated_at = utcnow()
-        audit.record(db, actor=p.actor, action="investigation.updated", target_type="investigation", target_id=inv.id,
-                     details={"changes": changes, "note": body.note})  # fmt: skip
-        db.commit()
-    return inv
 
 
 @router.get("/investigations/{inv_id}/timeline")

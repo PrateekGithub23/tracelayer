@@ -27,7 +27,18 @@ from app import __version__
 from app.integrity.ledger import verify_event
 from app.integrity.provenance import canonical_json, sha256_hex
 from app.integrity.validator import UNSAFE
-from app.models import AIAnalysis, AuditEntry, Detection, Event, IngestBatch, Investigation, InvestigationEvent
+from app.models import (
+    AIAnalysis,
+    AuditEntry,
+    CaseComment,
+    CaseEvidence,
+    Detection,
+    Event,
+    IngestBatch,
+    Investigation,
+    InvestigationEvent,
+    User,
+)
 
 CSV_FIELDS = ["id", "timestamp", "event_type", "outcome", "host", "username", "src_ip", "dst_ip", "dst_port",
               "process", "command_line", "bytes_out", "country", "role", "content_hash", "batch_id"]  # fmt: skip
@@ -74,6 +85,11 @@ def collect(db: Session, inv: Investigation) -> dict[str, Any]:
     audit_rows = db.scalars(select(AuditEntry).where(AuditEntry.target_id.in_([inv.id, *analysis_ids]))
                             .order_by(AuditEntry.id))  # fmt: skip
     head = db.execute(select(IngestBatch.seq, IngestBatch.chain_hash).order_by(IngestBatch.seq.desc()).limit(1)).first()
+    comments = list(db.scalars(select(CaseComment).where(CaseComment.investigation_id == inv.id,
+                                                         CaseComment.deleted_at.is_(None)).order_by(CaseComment.created_at)))  # fmt: skip
+    pins = list(db.scalars(select(CaseEvidence).where(CaseEvidence.investigation_id == inv.id)))
+    uids = {inv.assignee_id, inv.reviewer_id, *(c.author_id for c in comments), *(p.added_by for p in pins)}
+    names = {u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_([x for x in uids if x])))}
     return {
         "investigation": {
             "id": inv.id,
@@ -86,9 +102,37 @@ def collect(db: Session, inv: Investigation) -> dict[str, Any]:
             "last_seen": _iso(inv.last_seen),
             "entities": inv.entities,
             "tactics": inv.tactics,
-            "assignee": inv.assignee,
+            "priority": inv.priority,
+            "assignee": names.get(inv.assignee_id or ""),
+            "reviewer": names.get(inv.reviewer_id or ""),
+            "legacy_assignee": inv.legacy_assignee,
+            "resolution": inv.resolution,
+            "resolved_at": _iso(inv.resolved_at) if inv.resolved_at else None,
+            "closed_at": _iso(inv.closed_at) if inv.closed_at else None,
+            "reopen_count": inv.reopen_count,
+            "version": inv.version,
             "approved_analysis_id": inv.approved_analysis_id,
         },  # fmt: skip
+        "notes": [
+            {
+                "id": c.id,
+                "kind": c.kind,
+                "author": names.get(c.author_id),
+                "created_at": _iso(c.created_at),
+                "edited_at": _iso(c.edited_at) if c.edited_at else None,
+                "body": c.body,
+            }
+            for c in comments
+        ],
+        "pinned_evidence": [
+            {
+                "event_id": p.event_id,
+                "note": p.note,
+                "added_by": names.get(p.added_by),
+                "created_at": _iso(p.created_at),
+            }
+            for p in pins
+        ],
         "detections": [
             {
                 "id": d.id,
@@ -126,24 +170,40 @@ def collect(db: Session, inv: Investigation) -> dict[str, Any]:
     }
 
 
+_MD_SPECIAL = str.maketrans({c: "\\" + c for c in "\\`*_[]<>|#!"} | {"\n": " ", "\r": " "})
+
+
+def md(text: Any) -> str:
+    """Escape untrusted text (log fields, model output, analyst notes) for Markdown.
+
+    Prevents table breakage and, more importantly, live links/images/HTML such as
+    `[click](javascript:...)` or `<img src=x onerror=...>` appearing in a report rendered by another tool.
+    """
+    return str(text).translate(_MD_SPECIAL)
+
+
 def render_markdown(data: dict[str, Any]) -> str:
     inv = data["investigation"]
-    out = [f"# {inv['title']}", "",
+    out = [f"# {md(inv['title'])}", "",
            f"- **Investigation:** `{inv['id']}`  ",
-           f"- **Status:** {inv['status']} · **Severity:** {inv['severity']} · **Score:** {inv['score']}  ",
+           f"- **Status:** {inv['status']}" + (f" ({inv['resolution']})" if inv.get("resolution") else "")
+           + f" · **Priority:** {inv.get('priority', '-')} · **Assignee:** {md(inv.get('assignee') or 'unassigned')}  ",
+           f"- **Severity:** {inv['severity']} · **Score:** {inv['score']}  ",
            f"- **Window:** {inv['first_seen']} → {inv['last_seen']}  ",
            f"- **Tactics:** {', '.join(inv['tactics'])}  ",
            f"- **Events in scope:** {len(data['events'])} ({data['events_failing_integrity']} failing integrity checks)",
            "", "## Detections", "", "| Severity | Rule | Technique | First seen | Summary |", "|---|---|---|---|---|"]  # fmt: skip
     for d in data["detections"]:
-        out.append(f"| {d['severity']} | {d['rule_name']} | {d['technique']} | {d['first_seen']} | {d['summary']} |")
+        out.append(
+            f"| {d['severity']} | {md(d['rule_name'])} | {d['technique']} | {d['first_seen']} | {md(d['summary'])} |"
+        )
     approved = next((a for a in data["analyses"] if a["id"] == inv.get("approved_analysis_id")), None)
     analysis = approved or (data["analyses"][-1] if data["analyses"] else None)
     if analysis:
         state = "APPROVED" if approved else f"NOT APPROVED ({analysis['status']})"
         out += ["", f"## Analysis — {state}", "",
                 f"Generated by `{analysis['engine']}` / `{analysis['model']}` · integrity score "
-                f"{analysis['integrity'].get('integrity_score')}", "", analysis["summary"], ""]  # fmt: skip
+                f"{analysis['integrity'].get('integrity_score')}", "", md(analysis["summary"]), ""]  # fmt: skip
         sections = [
             ("Verified observations", {"verified_observation"}),
             ("Heuristic correlations", {"heuristic_correlation"}),
@@ -160,10 +220,23 @@ def render_markdown(data: dict[str, Any]) -> str:
                 cites = ", ".join(f"`{x}`" for x in c["citations"][:8])
                 more = f" (+{len(c['citations']) - 8} more)" if len(c["citations"]) > 8 else ""
                 review = f" — analyst: **{c['review_status']}**" if c["review_status"] != "pending" else ""
-                out.append(f"- {c['text']}{review}  ")
-                out.append(f"  _Evidence:_ {cites or 'none'}{more}" + (f"  _Why:_ {'; '.join(c['reasons'])}"
+                out.append(f"- {md(c['text'])}{review}  ")
+                out.append(f"  _Evidence:_ {cites or 'none'}{more}" + (f"  _Why:_ {md('; '.join(c['reasons']))}"
                            if c["verdict"] in UNSAFE else ""))  # fmt: skip
             out.append("")
+    if data.get("notes"):
+        out += ["## Analyst notes and comments", ""]
+        out += [
+            f"- **{md(n['author'] or '?')}** ({n['kind']}, {n['created_at']}): {md(n['body'])}" for n in data["notes"]
+        ]
+        out.append("")
+    if data.get("pinned_evidence"):
+        out += ["## Pinned evidence", ""]
+        out += [
+            f"- `{p['event_id']}`: {md(p['note'] or '')} (pinned by {md(p['added_by'] or '?')})"
+            for p in data["pinned_evidence"]
+        ]
+        out.append("")
     out += ["## Provenance", "",
             f"Ledger head at export: seq {data['ledger_head']['seq'] if data['ledger_head'] else '-'}, "
             f"`{data['ledger_head']['chain_hash'] if data['ledger_head'] else '-'}`", "",
