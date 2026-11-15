@@ -1,0 +1,154 @@
+{
+  "generate_ms": 282.6,
+  "ingest": {
+    "native": {
+      "records": 102249,
+      "accepted": 101237,
+      "duplicates": 1012,
+      "ms": 6103.6,
+      "records_per_sec": 16752
+    },
+    "sshd": {
+      "records": 25,
+      "accepted": 25,
+      "duplicates": 0,
+      "ms": 7.4,
+      "records_per_sec": 3366
+    },
+    "winsec": {
+      "records": 3,
+      "accepted": 3,
+      "duplicates": 0,
+      "ms": 3.2,
+      "records_per_sec": 941
+    }
+  },
+  "dedup_replay": {
+    "records": 102249,
+    "accepted": 0,
+    "duplicates": 102249,
+    "ms": 1842.8,
+    "records_per_sec": 55486
+  },
+  "detection": {
+    "ms": 983.5,
+    "events_scanned": 101265,
+    "events_per_sec": 102965,
+    "detections": 13,
+    "timings_ms": {
+      "load": 805.14,
+      "rules": 133.18,
+      "persist": 36.87
+    }
+  },
+  "detection_rerun": {
+    "ms": 969.4,
+    "created": 0,
+    "note": "idempotency check"
+  },
+  "correlation": {
+    "ms": 91.5,
+    "investigations": 2,
+    "clusters": 3
+  },
+  "analysis": [
+    {
+      "investigation": "7-stage intrusion (credential access \u2192 exfiltration) involvi",
+      "events_in_scope": 1929,
+      "claims": 22,
+      "unsafe_claims": 0,
+      "scope_ms": 45.8,
+      "generate_ms": 2.03,
+      "validate_ms": 9.84,
+      "validate_ms_per_claim": 0.447
+    },
+    {
+      "investigation": "Password brute force involving root on bastion-01",
+      "events_in_scope": 25,
+      "claims": 2,
+      "unsafe_claims": 0,
+      "scope_ms": 28.0,
+      "generate_ms": 0.11,
+      "validate_ms": 1.18,
+      "validate_ms_per_claim": 0.588
+    }
+  ],
+  "export": {
+    "ms": 86.5,
+    "events": 1929
+  },
+  "ledger_verification": {
+    "ms": 2711.4,
+    "ok": true,
+    "events_checked": 101265,
+    "events_per_sec": 37349
+  },
+  "queries": {
+    "events_by_user": {
+      "p50_ms": 1.271,
+      "p95_ms": 2.945
+    },
+    "events_by_ip": {
+      "p50_ms": 0.656,
+      "p95_ms": 1.074
+    },
+    "text_search": {
+      "p50_ms": 0.887,
+      "p95_ms": 1.095
+    },
+    "time_window": {
+      "p50_ms": 0.745,
+      "p95_ms": 1.158
+    }
+  },
+  "detection_quality": {
+    "expected_rules": [
+      "TL-AI-001",
+      "TL-AUTH-001",
+      "TL-AUTH-002",
+      "TL-AUTH-003",
+      "TL-DEF-001",
+      "TL-EXEC-001",
+      "TL-EXFIL-001",
+      "TL-LAT-001",
+      "TL-PRIV-001"
+    ],
+    "rules_fired": [
+      "TL-AI-001",
+      "TL-AUTH-001",
+      "TL-AUTH-002",
+      "TL-AUTH-003",
+      "TL-DEF-001",
+      "TL-EXEC-001",
+      "TL-EXFIL-001",
+      "TL-LAT-001",
+      "TL-PRIV-001"
+    ],
+    "rule_recall": 1.0,
+    "false_positive_detections": 0,
+    "false_positive_examples": []
+  },
+  "summary": {
+    "background_events": 100000,
+    "total_events": 101265,
+    "ingest_records_per_sec": 16728,
+    "dedup_records_per_sec": 55486,
+    "detection_events_per_sec": 102965,
+    "detection_ms": 983.5,
+    "correlation_ms": 91.5,
+    "validation_ms_per_claim": 0.588,
+    "ledger_verify_events_per_sec": 37349,
+    "rule_recall": 1.0,
+    "false_positive_detections": 0,
+    "unsafe_claims_deterministic": 0
+  },
+  "environment": {
+    "tracelayer": "0.1.0",
+    "python": "3.12.16",
+    "platform": "macOS-26.3.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpu_count": 10,
+    "database": "postgresql+psycopg",
+    "seed": 7
+  }
+}

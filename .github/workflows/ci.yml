@@ -1,5 +1,5 @@
-# CI: free for public repositories on GitHub Actions.
-# Backend tests run on SQLite; the PostgreSQL job runs the benchmark pipeline against a real Postgres service.
+# CI: free for public repositories on GitHub Actions (standard runners).
+# Third-party actions are pinned to commit SHAs (tags are mutable); the comment shows the tag.
 name: ci
 on: [push, pull_request]
 permissions: { contents: read }
@@ -9,39 +9,83 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: backend } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -e ".[dev]"
-      - run: ruff check app tests && ruff format --check app tests
-      - run: mypy app
-      - run: pytest
-      - run: python -m app.evaluation.suite
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - run: uv venv --python 3.12 .venv && uv pip install -r requirements.lock && uv pip install -e ".[dev]"
+      - run: .venv/bin/ruff check app tests && .venv/bin/ruff format --check app tests
+      - run: .venv/bin/mypy app
+      - run: .venv/bin/pytest            # includes RBAC matrix, held-out freeze, evaluation guards
+      - run: .venv/bin/python -m app.evaluation.suite --json evaluation.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: evaluation, path: backend/evaluation.json }
 
   postgres:
+    # Migrations (including the data-preserving 0003 and the least-privilege 0005) against real PostgreSQL,
+    # then the pipeline benchmark and a check that the runtime role cannot rewrite evidence.
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
-        env: { POSTGRES_USER: tl, POSTGRES_PASSWORD: tl, POSTGRES_DB: tl }
+        image: postgres:16.16-alpine
+        env: { POSTGRES_USER: tracelayer, POSTGRES_PASSWORD: ci-owner, POSTGRES_DB: tracelayer, TL_APP_PASSWORD: ci-app }
         ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U tl" --health-interval 3s --health-retries 20
+        options: --health-cmd "pg_isready -U tracelayer" --health-interval 3s --health-retries 20
     defaults: { run: { working-directory: backend } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -e .
-      - run: python -m app.benchmarks.runner --events 5000 --database-url postgresql+psycopg://tl:tl@localhost:5432/tl
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - run: uv venv --python 3.12 .venv && uv pip install -r requirements.lock && uv pip install -e .
+      - name: create the runtime role (same script as docker compose)
+        run: |
+          sudo apt-get install -y -qq postgresql-client >/dev/null
+          PGPASSWORD=ci-owner POSTGRES_USER=tracelayer POSTGRES_DB=tracelayer TL_APP_PASSWORD=ci-app \
+            PGHOST=localhost sh ../docker/postgres/10-app-role.sh
+      - run: TRACELAYER_DATABASE_URL=postgresql+psycopg://tracelayer:ci-owner@localhost:5432/tracelayer .venv/bin/tracelayer migrate
+      - name: runtime role cannot UPDATE/DELETE evidence
+        run: |
+          export PGPASSWORD=ci-app
+          psql -h localhost -U tracelayer_app -d tracelayer -c "select count(*) from events"
+          psql -h localhost -U tracelayer_app -d tracelayer -c "delete from audit_log" 2>&1 | grep -q "permission denied"
+      - run: .venv/bin/python -m app.benchmarks.runner --events 5000 --database-url postgresql+psycopg://tracelayer:ci-owner@localhost:5432/tracelayer
 
   frontend:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: frontend } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: "20", cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run build:demo
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "20", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: cd backend && uv venv --python 3.12 .venv && uv pip install -r requirements.lock && uv pip install -e .
+      - run: cd frontend && npm ci && npx playwright install --with-deps chromium
+      - run: cd frontend && npx playwright test                                   # real backend, isolated SQLite
+      - run: cd frontend && npm run build:demo && npx playwright test -c playwright.demo.config.ts   # static demo
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }      # full history for secret scanning
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - name: secret scan (gitleaks, history + tree)
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --config /repo/.gitleaks.toml /repo
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 dir --redact --config /repo/.gitleaks.toml /repo
+      - name: Python dependencies (pip-audit, hash-pinned lock)
+        run: cd backend && uvx pip-audit -r requirements.lock --require-hashes --disable-pip
+      - name: npm dependencies (production)
+        run: cd frontend && npm audit --omit=dev --audit-level=moderate
+      - name: container images build
+        run: docker compose build
