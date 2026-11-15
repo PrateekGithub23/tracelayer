@@ -83,7 +83,8 @@ PostgreSQL ~50–150 MB, API ~150–250 MB, nginx under 10 MB; Ollama with llama
 Machine conditions varied during this session: a separately running Docker stack and background processes put the
 load average at ~2–3, and absolute throughput was about half of the earlier v2 session. Comparisons below are
 therefore **paired**: v2 code (commit `9734726`, via a git worktree) and v3 code ran alternately under the same
-conditions. Absolute numbers from different sessions are not compared.
+conditions. (`9734726` is the v2 pipeline as of the CI commit; the two later v2 commits changed 41 lines
+of backend code, including one extra validator check, so the claim-validation comparison is approximate.) Absolute numbers from different sessions are not compared.
 
 ### Pipeline, 100k synthetic background events (paired)
 
