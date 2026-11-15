@@ -6,6 +6,12 @@ import { ApiError, isDemoTransport } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { AuthShell, Field, FormError } from "./AuthShell";
 
+/** Only same-app paths: rejects absolute URLs, protocol-relative "//host" and backslash variants ("/\\host"). */
+export function safeRedirect(target: string | undefined): string {
+  if (!target || !target.startsWith("/") || target.startsWith("//") || target.includes("\\") || /[\u0000-\u001f]/.test(target)) return "/";
+  return target;
+}
+
 export default function Login() {
   const { login, config } = useAuth();
   const nav = useNavigate();
@@ -34,7 +40,7 @@ export default function Login() {
     setError(null);
     try {
       await login(email, password);
-      nav((loc.state as { from?: string } | null)?.from ?? "/", { replace: true });
+      nav(safeRedirect((loc.state as { from?: string } | null)?.from), { replace: true });
     } catch (err) {
       setError(err instanceof ApiError && err.status === 429 ? "Too many attempts. Wait a few minutes and try again." :
         err instanceof ApiError ? err.message : "Sign-in failed");

@@ -215,9 +215,10 @@ def build(out: Path, otrf_file: str | None, use_llm: bool) -> dict[str, Any]:
             examples.append({"title": title, "investigation_id": main["id"], "output": text, "result": res})
         export_zip = c.get(f"/api/investigations/{main['id']}/export?format=zip").content
 
-    snapshot = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "main_investigation": main["id"],
+    snapshot: dict[str, Any] = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "main_investigation": main["id"],
                 "responses": rec, "events": events, "event_details": details, "validator_examples": examples,
                 "llm_analysis": bool(llm), "attribution": "Includes OTRF Security-Datasets (MIT License, Copyright (c) 2021 Open Threat Research Forge)." if otrf_file else None}  # fmt: skip
+    snapshot = scrub(snapshot)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(snapshot, separators=(",", ":"), default=str))
     (out.parent / f"tracelayer-{main['id']}.zip").write_bytes(export_zip)
@@ -227,12 +228,60 @@ def build(out: Path, otrf_file: str | None, use_llm: bool) -> dict[str, Any]:
     return snapshot
 
 
+def scrub(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Remove anything credential-like before the snapshot is published.
+
+    * the builder session's CSRF token (the session is gone, but no token belongs in a public file);
+    * credentials inside raw records, e.g. the OTRF lab backdoor password in `net user /add` commands.
+      Raw records are evidence and are hashed, so the *published copy* is redacted and flagged
+      (raw_redacted); the content hash shown was computed over the original by the real backend.
+    """
+    from app.ingestion.parsers import redact_credentials
+
+    me = snapshot["responses"].get("/auth/me")
+    if me:
+        me["csrf_token"] = "demo-transport-does-not-use-csrf"
+
+    def walk(v: Any) -> tuple[Any, bool]:
+        if isinstance(v, str):
+            out, changed = redact_credentials(v)
+            return out, changed
+        if isinstance(v, dict):
+            changed = False
+            for k in v:
+                v[k], c = walk(v[k])
+                changed |= c
+            return v, changed
+        if isinstance(v, list):
+            changed = False
+            for i, x in enumerate(v):
+                v[i], c = walk(x)
+                changed |= c
+            return v, changed
+        return v, False
+
+    for detail in snapshot["event_details"].values():
+        if detail.get("raw"):
+            detail["raw"], changed = walk(detail["raw"])
+            if changed:
+                detail["raw_redacted"] = True
+    walk(snapshot["responses"])
+    walk(snapshot["validator_examples"])
+    return snapshot
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="../frontend/public/demo-data/snapshot.json")
     ap.add_argument("--otrf-file")
     ap.add_argument("--llm", action="store_true", help="also record a real local-LLM analysis (needs Ollama)")
+    ap.add_argument("--scrub-only", action="store_true", help="re-apply scrubbing to an existing snapshot at --out")
     a = ap.parse_args()
+    if a.scrub_only:
+        p = Path(a.out)
+        p.write_text(json.dumps(scrub(json.loads(p.read_text())), separators=(",", ":"), default=str))
+        print(f"scrubbed {p}")
+        return
     build(Path(a.out), a.otrf_file, a.llm)
 
 

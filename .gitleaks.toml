@@ -1,0 +1,14 @@
+# Secret scanning configuration (gitleaks). Default rules apply everywhere.
+# The only exemption: automated tests and e2e specs, which contain *fake* fixture passwords by design
+# (e.g. "Kestrel-orbit-4471"). They protect nothing, are never used outside throwaway test databases,
+# and must stay readable in the tests. Any finding outside these paths fails CI.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials used only by automated tests"
+paths = [
+  '''^backend/tests/''',
+  '''^frontend/e2e/''',
+  '''^frontend/e2e-demo/''',
+]

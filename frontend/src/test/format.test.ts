@@ -20,3 +20,13 @@ describe("format helpers", () => {
     expect(UNSAFE).toEqual(["unsupported_claim", "contradictory_finding"]);
   });
 });
+
+import { safeRedirect } from "../pages/auth/Login";
+
+describe("safeRedirect (open-redirect defence)", () => {
+  it("keeps in-app paths and rejects everything else", () => {
+    expect(safeRedirect("/investigations?view=mine")).toBe("/investigations?view=mine");
+    for (const bad of ["https://evil.example", "//evil.example", "/\\evil.example", "\\\\evil", "javascript:alert(1)", undefined, "/a\u0000b"])
+      expect(safeRedirect(bad)).toBe("/");
+  });
+});
