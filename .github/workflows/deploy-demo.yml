@@ -32,8 +32,8 @@ jobs:
         run: cd frontend && VITE_BASE="${{ steps.pages.outputs.base_path }}/" npx playwright test -c playwright.demo.config.ts
       - name: secret scan (repository history + built output)
         run: |
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --config /repo/.gitleaks.toml /repo
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 dir --redact --config /repo/.gitleaks.toml /repo/frontend/dist-demo
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --config .gitleaks.toml .
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.30.1 dir --redact --config .gitleaks.toml frontend/dist-demo
       - name: refuse to publish anything secret-looking or private
         run: |
           ! grep -rEl "argon2id|password_hash|token_hash|BEGIN [A-Z ]*PRIVATE KEY|ghp_[A-Za-z0-9]{30}|localhost:(8000|11434|5432)" frontend/dist-demo

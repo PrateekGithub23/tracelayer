@@ -88,8 +88,9 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - name: secret scan (gitleaks, history + tree)
         run: |
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --config /repo/.gitleaks.toml /repo
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 dir --redact --config /repo/.gitleaks.toml /repo
+          # Run from inside the repository so file paths are relative and match the allowlist in .gitleaks.toml
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --config .gitleaks.toml .
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.30.1 dir --redact --config .gitleaks.toml .
       - name: Python dependencies (pip-audit, hash-pinned lock)
         run: cd backend && uvx pip-audit -r requirements.lock --require-hashes --disable-pip
       - name: npm dependencies (production)
