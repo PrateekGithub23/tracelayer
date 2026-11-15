@@ -234,3 +234,16 @@ def test_production_refuses_insecure_config(db_url: str, monkeypatch) -> None:  
             assert "strict-transport-security" in r.headers
     finally:
         get_settings.cache_clear()
+
+
+def test_activity_history_and_failed_login_visibility(admin_client: TestClient, anon_client: TestClient) -> None:
+    uid = make_user("analyst")
+    anon_client.post("/api/auth/login", json={"email": ANALYST, "password": "wrong-password-xx"})
+    login(anon_client, ANALYST, PASSWORDS["analyst"])
+    mine = anon_client.get("/api/auth/activity").json()
+    assert [a["action"] for a in mine] == ["auth.login"]  # only this user's own audited actions
+    assert anon_client.get(f"/api/admin/users/{uid}/activity").status_code == 403
+    users = {u["email"]: u for u in admin_client.get("/api/admin/users").json()}
+    assert users[ANALYST]["failed_logins_24h"] == 1
+    assert admin_client.get(f"/api/admin/users/{uid}/activity").json()[0]["action"] == "auth.login"
+    assert anon_client.get("/api/auth/me").json()["session"]["idle_minutes"] == 480

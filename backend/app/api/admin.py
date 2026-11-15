@@ -9,6 +9,7 @@ Guard rails enforced here (and tested):
   * invitation tokens and recovery codes are shown exactly once and stored only as SHA-256.
 """
 
+from datetime import timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -68,7 +69,13 @@ def list_users(_: Principal = Depends(require("users:manage")), db: Session = De
     users = list(db.scalars(select(User).order_by(User.created_at)))
     active: dict[str, int] = {uid: n for uid, n in db.execute(select(UserSession.user_id, func.count()).where(
         UserSession.revoked_at.is_(None), UserSession.expires_at > utcnow()).group_by(UserSession.user_id))}  # fmt: skip
-    return [{**user_out(u), "active_sessions": active.get(u.id, 0)} for u in users]
+    since = utcnow() - timedelta(hours=24)
+    failed: dict[str, int] = {uid: n for uid, n in db.execute(
+        select(LoginEvent.user_id, func.count()).where(LoginEvent.success.is_(False), LoginEvent.created_at >= since)
+        .group_by(LoginEvent.user_id)) if uid}  # fmt: skip
+    return [
+        {**user_out(u), "active_sessions": active.get(u.id, 0), "failed_logins_24h": failed.get(u.id, 0)} for u in users
+    ]
 
 
 @router.post("/users", status_code=201)
@@ -154,6 +161,15 @@ def user_login_history(user_id: str, _: Principal = Depends(require("users:manag
     )
     return [{"id": r.id, "created_at": r.created_at, "success": r.success, "reason": r.reason, "ip": r.ip,
              "user_agent": r.user_agent} for r in rows]  # fmt: skip
+
+
+@router.get("/users/{user_id}/activity")
+def user_activity(user_id: str, _: Principal = Depends(require("users:manage")),
+                  db: Session = Depends(get_db)) -> list[dict[str, Any]]:  # fmt: skip
+    from app.api.auth import activity_for
+
+    _user(db, user_id)
+    return activity_for(db, user_id)
 
 
 # --------------------------------------------------------------------------- invitations

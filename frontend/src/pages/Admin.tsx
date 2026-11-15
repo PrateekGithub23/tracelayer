@@ -1,6 +1,6 @@
 // Administration: users and roles, invitations, recovery codes, application settings and the audit log.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CheckCircle2, KeyRound, LogOut, MailPlus, ShieldCheck, UserPlus } from "lucide-react";
+import { Ban, CheckCircle2, History, KeyRound, LogOut, MailPlus, ShieldCheck, UserPlus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useToast } from "../components/Toast";
@@ -9,6 +9,7 @@ import {
 } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { ActivityList } from "./Account";
 import { fmtRelative, fmtTime, shortHash } from "../lib/format";
 import type { AdminUser, Role } from "../lib/types-v2";
 
@@ -47,6 +48,7 @@ function Users() {
   const q = useQuery({ queryKey: ["admin-users"], queryFn: api.users });
   const [creating, setCreating] = useState(false);
   const [code, setCode] = useState<{ email: string; code: string; expires_at: string } | null>(null);
+  const [detail, setDetail] = useState<AdminUser | null>(null);
   const done = (msg: string) => { toast("success", msg); qc.invalidateQueries({ queryKey: ["admin-users"] }); };
   const patch = useMutation({ mutationFn: ({ id, body }: { id: string; body: Record<string, string> }) => api.patchUser(id, body), onSuccess: () => done("User updated; their sessions were signed out"), onError: onErr });
   const revoke = useMutation({ mutationFn: api.revokeUserSessions, onSuccess: (r) => done(`Signed out ${r.revoked} session(s)`), onError: onErr });
@@ -58,9 +60,9 @@ function Users() {
     <Card pad={false} title="Users" subtitle="Changing a role or disabling an account signs the user out everywhere immediately."
       actions={<Button size="sm" variant="primary" onClick={() => setCreating(true)}><UserPlus className="h-3.5 w-3.5" />New user</Button>}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-[13px]">
+        <table className="w-full min-w-[860px] text-[13px]">
           <thead className="text-left text-[11px] uppercase tracking-wider text-fg-faint">
-            <tr><th className="px-4 py-2">User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Sessions</th><th className="px-4 text-right">Actions</th></tr>
+            <tr><th className="px-4 py-2">User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th title="Failed sign-in attempts in the last 24 hours">Failed (24 h)</th><th>Sessions</th><th className="px-4 text-right">Actions</th></tr>
           </thead>
           <tbody className="divide-y divide-ink-700">
             {q.data!.map((u: AdminUser) => {
@@ -77,9 +79,11 @@ function Users() {
                   </td>
                   <td>{u.status === "active" ? <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />active</span> : <span className="inline-flex items-center gap-1 text-rose-300"><Ban className="h-3.5 w-3.5" />disabled</span>}{u.must_change_password && <div className="text-[11px] text-amber-300">must change password</div>}</td>
                   <td className="text-fg-muted">{u.last_login_at ? fmtRelative(u.last_login_at) : "never"}</td>
+                  <td className={`tabular-nums ${(u.failed_logins_24h ?? 0) >= 5 ? "font-semibold text-amber-300" : ""}`}>{u.failed_logins_24h ?? 0}</td>
                   <td className="tabular-nums">{u.active_sessions ?? 0}</td>
                   <td className="px-4">
                     <div className="flex justify-end gap-1.5">
+                      <Button size="sm" variant="ghost" title="Sign-in history and activity" onClick={() => setDetail(u)}><History className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" title="Sign out everywhere" disabled={!u.active_sessions} onClick={() => revoke.mutate(u.id)}><LogOut className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" title="Issue a one-time recovery code" disabled={u.is_demo} onClick={() => recovery.mutate(u.id)}><KeyRound className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant={u.status === "active" ? "danger" : "default"} disabled={self || u.is_demo}
@@ -94,6 +98,9 @@ function Users() {
           </tbody>
         </table>
       </div>
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? `${detail.display_name}: sign-ins and activity` : ""}>
+        {detail && <UserDetail user={detail} />}
+      </Modal>
       <CreateUser open={creating} onClose={() => setCreating(false)} onCreated={() => done("User created")} />
       <Modal open={!!code} onClose={() => setCode(null)} title="Recovery code" footer={<Button onClick={() => setCode(null)}>Done</Button>}>
         {code && <div className="space-y-3 text-[13px] text-fg-muted">
@@ -102,6 +109,26 @@ function Users() {
         </div>}
       </Modal>
     </Card>
+  );
+}
+
+function UserDetail({ user }: { user: AdminUser }) {
+  const logins = useQuery({ queryKey: ["user-logins", user.id], queryFn: () => api.userLoginHistory(user.id) });
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-fg-faint">Recent sign-in attempts</h3>
+        {logins.isLoading ? <Spinner /> : !logins.data?.length ? <p className="text-[13px] text-fg-muted">None recorded.</p> : (
+          <ul className="space-y-1 text-[12.5px]">
+            {logins.data.slice(0, 15).map((r) => (
+              <li key={r.id} className="flex justify-between gap-3"><span className="font-mono text-[11.5px] text-fg-faint">{fmtTime(r.created_at)}</span>
+                <span className={r.success ? "text-emerald-300" : "text-rose-300"}>{r.success ? "success" : r.reason.replaceAll("_", " ")}</span><span className="font-mono text-[11.5px]">{r.ip ?? "—"}</span></li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <ActivityList load={() => api.userActivity(user.id)} queryKey={`user-activity-${user.id}`} />
+    </div>
   );
 }
 

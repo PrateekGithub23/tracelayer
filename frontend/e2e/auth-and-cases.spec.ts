@@ -51,6 +51,8 @@ test.describe.serial("TraceLayer v2", () => {
     await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
     await page.goto("/account?tab=sessions");
     await expect(page.getByText("this browser")).toBeVisible();
+    await page.getByRole("tab", { name: "My activity" }).click();
+    await expect(page.getByText("auth.password_changed")).toBeVisible();
   });
 
   test("admin seeds data and creates analyst + viewer accounts in the UI", async ({ page }) => {
@@ -67,6 +69,10 @@ test.describe.serial("TraceLayer v2", () => {
       await dialog.getByRole("button", { name: "Create" }).click();
       await expect(page.getByText(u.email)).toBeVisible();
     }
+    // Admin can inspect a user's sign-ins and audited actions.
+    await page.getByRole("row", { name: /ana@e2e\.test/ }).getByTitle("Sign-in history and activity").click();
+    await expect(page.getByRole("dialog").getByText("Recent sign-in attempts")).toBeVisible();
+    await page.keyboard.press("Escape");
     // Simulate each user's first login password change through the API (UI flow covered above).
     for (const u of [ANALYST, VIEWER]) {
       const ctx = await page.context().browser()!.newContext({ baseURL: "http://localhost:5174" });

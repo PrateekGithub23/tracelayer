@@ -13,7 +13,7 @@ export interface Me {
   user: UserInfo;
   permissions: string[];
   csrf_token: string;
-  session: { id: string; created_at: string; expires_at: string; absolute_expires_at: string };
+  session: { id: string; created_at: string; expires_at: string; absolute_expires_at: string; idle_minutes?: number };
 }
 
 export interface AuthConfig { registration_mode: "disabled" | "invite" | "open"; has_users: boolean; cookie_secure: boolean; demo?: boolean }
@@ -25,7 +25,8 @@ export interface SessionInfo {
 
 export interface LoginRecord { id: number; created_at: string; success: boolean; reason: string; ip: string | null; user_agent: string | null }
 
-export interface AdminUser extends UserInfo { active_sessions?: number }
+export interface AdminUser extends UserInfo { active_sessions?: number; failed_logins_24h?: number }
+export interface UserActivity { id: number; timestamp: string; action: string; target_type: string; target_id: string; entry_hash: string }
 
 export interface Invitation {
   id: string; email: string | null; role: Role; created_at: string; expires_at: string; used_at: string | null;
@@ -72,4 +73,15 @@ export interface DatasetInfo {
 export interface LlmStatus {
   mode: string; configured_model: string; url: string; reachable: boolean; model_available: boolean;
   models: string[]; version?: string | null; error?: string | null; timeout_s: number; last_latency_ms?: number | null;
+}
+
+export type CoverageStatus = "full" | "partial" | "raw_only" | "typed_unassessed";
+export interface Coverage {
+  total_events: number; rejected_records: number;
+  statuses: Record<CoverageStatus, number>; percent: Record<CoverageStatus, number | null>;
+  event_types: Record<string, number>;
+  fields_missing: { field: string; count: number }[];
+  reasons: { reason: string; count: number }[];
+  unsupported_source_types: { source_type: string; count: number }[];
+  by_source: ({ source: string; parser: string; total: number; rejected: number } & Record<CoverageStatus, number>)[];
 }

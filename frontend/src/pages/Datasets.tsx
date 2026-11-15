@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Database, Download, ExternalLink, FlaskConical, Play, Scale, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { CoveragePanel } from "../components/CoveragePanel";
 import { useToast } from "../components/Toast";
 import { Button, Card, EmptyState, ErrorState, PageHeader, Pill, SeverityBadge, Spinner, Stat, Tabs } from "../components/ui";
 import { api, ApiError, isDemoTransport } from "../lib/api";
@@ -16,6 +17,7 @@ type Tab = "overview" | "results" | "mapping";
 export default function Datasets() {
   const q = useQuery({ queryKey: ["datasets"], queryFn: api.datasets });
   const [sel, setSel] = useState<string | null>(null);
+  const [view, setView] = useState<"datasets" | "coverage">("datasets");
   if (q.isLoading) return <Spinner />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const list = q.data!;
@@ -23,7 +25,9 @@ export default function Datasets() {
   return (
     <>
       <PageHeader title="Datasets" subtitle="Public, licensed security telemetry processed by the same pipeline as any other source. Lab-recorded attack data, not enterprise production logs." />
-      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+      <Tabs<"datasets" | "coverage"> value={view} onChange={setView} tabs={[{ id: "datasets", label: "Public datasets", count: list.length }, { id: "coverage", label: "Telemetry coverage" }]} />
+      <div className="mt-4" />
+      {view === "coverage" ? <CoveragePanel /> : <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
         <div className="space-y-2">
           {list.map((d) => (
             <button key={d.id} onClick={() => setSel(d.id)}
@@ -39,7 +43,7 @@ export default function Datasets() {
           ))}
         </div>
         {current ? <DatasetDetail d={current} /> : <EmptyState title="No datasets catalogued" />}
-      </div>
+      </div>}
     </>
   );
 }
@@ -130,9 +134,9 @@ function DatasetDetail({ d }: { d: DatasetInfo & Record<string, any> }) {
                 <div className="pt-2 text-fg-muted">Correlated into {r.correlations.length} investigation(s){r.cross_source_correlations ? `, ${r.cross_source_correlations} mixing this dataset with other sources (check these)` : ", none mixing sources"}.</div>
               </div>
             </Card>
-            <Card title="What the schema loses" subtitle={`${Math.round((r.unmapped_share ?? 0) * 100)}% of events have no typed mapping (kept as ‘other’ with the full raw record).`}>
+            <Card title="Normalisation coverage" subtitle={r.coverage ? `Parser ${r.parser}: ${r.coverage.percent.full}% fully normalised, ${r.coverage.percent.partial}% partial, ${r.coverage.percent.raw_only}% raw only (raw records always kept).` : `${Math.round((r.unmapped_share ?? 0) * 100)}% of events have no typed mapping (imported before v3 coverage tracking).`}>
               <ul className="space-y-1 text-[12.5px]">
-                {r.top_unmapped.slice(0, 8).map((u: any) => <li key={u.source} className="flex justify-between gap-3"><span className="font-mono text-fg-muted">{u.source}</span><span className="tabular-nums">{u.count.toLocaleString()}</span></li>)}
+                {(r.coverage?.unsupported_source_types?.map((u: any) => ({ source: u.source_type, count: u.count })) ?? r.top_unmapped).slice(0, 8).map((u: any) => <li key={u.source} className="flex justify-between gap-3"><span className="font-mono text-fg-muted">{u.source}</span><span className="tabular-nums">{u.count.toLocaleString()}</span></li>)}
               </ul>
               <p className="mt-3 text-[12px] text-fg-faint"><ShieldCheck className="mr-1 inline h-3.5 w-3.5" />{r.credential_redactions} command lines had credentials redacted. Local-time offsets seen in EventTime: {Object.entries(r.local_time_offsets).map(([k, v]) => `${k} (${v})`).join(", ") || "none"}.</p>
             </Card>

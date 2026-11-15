@@ -15,7 +15,7 @@ import type {
   InvestigationListItem, Overview, Report, Run, SystemStatus, Timeline,
 } from "./types";
 import type {
-  ActivityEntry, AdminUser, AppSettings, AuthConfig, CaseComment, DatasetInfo, DirectoryUser, Invitation, LlmStatus,
+  ActivityEntry, AdminUser, AppSettings, AuthConfig, CaseComment, Coverage, DatasetInfo, UserActivity, DirectoryUser, Invitation, LlmStatus,
   LoginRecord, Me, PinnedEvidence, Queues, SavedFilter, SessionInfo,
 } from "./types-v2";
 
@@ -65,10 +65,14 @@ function describe(detail: unknown): string {
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** Time of the last request the server answered: sessions slide on activity, so this drives the expiry warning. */
+export let lastActivityAt = Date.now();
+
 async function call(method: string, path: string, json?: unknown, form?: FormData, raw = false): Promise<TransportResponse> {
   const headers: Record<string, string> = {};
   if (UNSAFE.has(method) && csrfToken) headers["X-CSRF-Token"] = csrfToken;
   const res = await transport(method, path, { json, form, headers, raw });
+  if (res.status < 400) lastActivityAt = Date.now();
   if (res.status >= 400) {
     const detail = (res.body as any)?.detail ?? res.body;
     const reason = typeof detail === "object" && detail ? (detail as any).reason : undefined;
@@ -199,6 +203,8 @@ export const api = {
   revokeSession: (sid: string) => request<{ ok: boolean }>("DELETE", `/auth/sessions/${sid}`),
   revokeOtherSessions: () => request<{ revoked: number }>("POST", "/auth/sessions/revoke-others"),
   loginHistory: () => request<LoginRecord[]>("GET", "/auth/login-history"),
+  myActivity: () => request<UserActivity[]>("GET", "/auth/activity"),
+  userActivity: (uid: string) => request<UserActivity[]>("GET", `/admin/users/${uid}/activity`),
   register: (body: { invite_token?: string; email: string; display_name: string; password: string }) =>
     request<{ user: Me["user"] }>("POST", "/auth/register", body),
   recover: (email: string, code: string, new_password: string) =>
@@ -224,6 +230,7 @@ export const api = {
 
   // ---- datasets + LLM
   datasets: () => request<DatasetInfo[]>("GET", "/datasets"),
+  coverage: () => request<Coverage>("GET", "/datasets/coverage"),
   dataset: (did: string) => request<DatasetInfo>("GET", `/datasets/${did}`),
   importDataset: (did: string) => request<Run>("POST", `/datasets/${did}/import`),
   llmStatus: () => request<LlmStatus>("GET", "/llm/status"),

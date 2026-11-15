@@ -10,7 +10,7 @@ import { useAuth } from "../lib/auth";
 import { fmtRelative, fmtTime } from "../lib/format";
 import { Field, FormError, PASSWORD_HINT } from "./auth/AuthShell";
 
-type Tab = "profile" | "security" | "sessions" | "history";
+type Tab = "profile" | "security" | "sessions" | "history" | "activity";
 
 function describeAgent(ua: string | null): string {
   if (!ua) return "Unknown client";
@@ -27,12 +27,13 @@ export default function Account() {
       <PageHeader title="Account" subtitle="Your profile, password and where you are signed in." />
       <Tabs<Tab> value={tab} onChange={(t) => setParams({ tab: t }, { replace: true })} tabs={[
         { id: "profile", label: "Profile" }, { id: "security", label: "Password" },
-        { id: "sessions", label: "Active sessions" }, { id: "history", label: "Sign-in history" }]} />
+        { id: "sessions", label: "Active sessions" }, { id: "history", label: "Sign-in history" }, { id: "activity", label: "My activity" }]} />
       <div className="mt-5 max-w-3xl">
         {tab === "profile" && <Profile />}
         {tab === "security" && <PasswordForm />}
         {tab === "sessions" && <Sessions />}
         {tab === "history" && <History />}
+        {tab === "activity" && <ActivityList load={api.myActivity} queryKey="my-activity" />}
       </div>
     </>
   );
@@ -174,6 +175,27 @@ function History() {
           ))}
         </tbody>
       </table>
+    </Card>
+  );
+}
+
+/** Audited actions by one user, newest first (also used by the admin user dialog). */
+export function ActivityList({ load, queryKey }: { load: () => Promise<import("../lib/types-v2").UserActivity[]>; queryKey: string }) {
+  const q = useQuery({ queryKey: [queryKey], queryFn: load });
+  if (q.isLoading) return <Spinner />;
+  if (q.error) return <ErrorState error={q.error} />;
+  if (!q.data!.length) return <EmptyState title="No recorded actions yet" />;
+  return (
+    <Card pad={false} title="Activity" subtitle="Actions recorded in the hash-chained audit log under this account.">
+      <ul className="divide-y divide-ink-700">
+        {q.data!.map((a) => (
+          <li key={a.id} className="grid gap-1 px-4 py-2.5 text-[12.5px] md:grid-cols-[170px_200px_1fr]">
+            <span className="font-mono text-[11.5px] text-fg-faint">{fmtTime(a.timestamp)}</span>
+            <span className="font-medium text-sky-200">{a.action}</span>
+            <span className="truncate text-fg-muted">{a.target_type} <span className="font-mono">{a.target_id}</span></span>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

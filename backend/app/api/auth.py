@@ -94,7 +94,8 @@ def _me(p: Principal) -> dict[str, Any]:
     return {"user": user_out(p.user), "permissions": sorted(PERMISSIONS[p.user.role]),
             "csrf_token": p.session.csrf_token,
             "session": {"id": p.session.id, "created_at": p.session.created_at,
-                        "expires_at": effective_expiry(p.session), "absolute_expires_at": p.session.expires_at}}  # fmt: skip
+                        "expires_at": effective_expiry(p.session), "absolute_expires_at": p.session.expires_at,
+                        "idle_minutes": get_settings().session_idle_minutes}}  # fmt: skip
 
 
 def _record_login(db: Session, request: Request, email: str, user: User | None, ok: bool, reason: str) -> None:
@@ -246,6 +247,21 @@ def login_history(
                       .order_by(LoginEvent.created_at.desc()).limit(50))  # fmt: skip
     return [{"id": r.id, "created_at": r.created_at, "success": r.success, "reason": r.reason, "ip": r.ip,
              "user_agent": r.user_agent} for r in rows]  # fmt: skip
+
+
+def activity_for(db: Session, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Audited actions performed by a user (actor strings embed the stable user id)."""
+    from app.models import AuditEntry
+
+    rows = db.scalars(select(AuditEntry).where(AuditEntry.actor.contains(f"({user_id})"))
+                      .order_by(AuditEntry.id.desc()).limit(limit))  # fmt: skip
+    return [{"id": e.id, "timestamp": e.timestamp, "action": e.action, "target_type": e.target_type,
+             "target_id": e.target_id, "entry_hash": e.entry_hash} for e in rows]  # fmt: skip
+
+
+@router.get("/activity")
+def my_activity(p: Principal = Depends(require("account:own")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    return activity_for(db, p.user.id)
 
 
 @router.post("/register", status_code=201)

@@ -11,6 +11,7 @@ import { type ReactNode, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { api, isDemoTransport } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { SessionWarning } from "./SessionWarning";
 
 interface NavItem { to: string; label: string; icon: typeof Activity; end?: boolean; perm?: string; badge?: "queue" }
 const NAV: { section: string; items: NavItem[] }[] = [
@@ -159,6 +160,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       )}
       <DemoBanner />
+      <SessionWarning />
       <main id="main" className="px-4 py-6 lg:ml-60 lg:px-8 lg:py-8">
         <div className="mx-auto max-w-[1440px]">{children}</div>
       </main>
