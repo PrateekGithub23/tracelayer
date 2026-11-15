@@ -3,7 +3,7 @@
 
 import clsx from "clsx";
 import { AlertTriangle, Inbox, Loader2, X } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../lib/api";
 import { SEVERITY_STYLE, VERDICT_META } from "../lib/format";
 import type { Severity, Verdict } from "../lib/types";
@@ -213,6 +213,58 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
         {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+export function Modal({ open, onClose, title, children, footer }: {
+  open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+      <div className="absolute inset-0 bg-ink-950/75 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-xl border border-ink-600 bg-ink-850 shadow-2xl">
+        <header className="flex items-center justify-between border-b border-ink-700 px-5 py-3.5">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <button onClick={onClose} className="rounded-md p-1 text-fg-muted hover:bg-ink-700 hover:text-fg" aria-label="Close"><X className="h-4 w-4" /></button>
+        </header>
+        <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
+        {footer && <footer className="flex justify-end gap-2 border-t border-ink-700 px-5 py-3">{footer}</footer>}
+      </div>
+    </div>
+  );
+}
+
+export function TextArea({ value, onChange, label, placeholder, rows = 3, className }: {
+  value: string; onChange: (v: string) => void; label?: string; placeholder?: string; rows?: number; className?: string;
+}) {
+  return (
+    <label className={clsx("flex flex-col gap-1", className)}>
+      {label && <span className="text-[11px] font-medium uppercase tracking-wider text-fg-faint">{label}</span>}
+      <textarea value={value} rows={rows} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
+        className="rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-[13px] text-fg placeholder:text-fg-faint focus:border-sky-500 focus:outline-none" />
+    </label>
+  );
+}
+
+/** A value shown exactly once (invitation token, recovery code), with a copy button. */
+export function SecretReveal({ label, value, note }: { label: string; value: string; note?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-amber-200">{label}</div>
+      <div className="mt-1.5 flex items-center gap-2">
+        <code className="min-w-0 flex-1 break-all rounded bg-ink-900 px-2 py-1.5 font-mono text-[12px]">{value}</code>
+        <Button size="sm" onClick={() => { void navigator.clipboard?.writeText(value); setCopied(true); }}>{copied ? "Copied" : "Copy"}</Button>
+      </div>
+      <p className="mt-2 text-[11.5px] text-amber-100/80">{note ?? "Shown once. TraceLayer stores only a hash of it and cannot display it again."}</p>
     </div>
   );
 }

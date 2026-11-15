@@ -1,14 +1,23 @@
-// Thin typed HTTP client for the TraceLayer API.
+// Typed client for the TraceLayer API.
 //
-// * All requests go to the same origin (/api): Vite proxies in dev, nginx in Docker.
-// * The analyst name and optional API token live in localStorage and are sent as
-//   X-Analyst / Authorization headers; the backend records the name in the audit log.
-// * Errors are normalised into ApiError so every page can show the backend's message.
+// * Authentication is a server-side session in an HttpOnly cookie: JavaScript never sees a credential,
+//   and nothing secret is written to localStorage (v1 stored a bearer token there).
+// * State-changing requests carry the session's CSRF token in X-CSRF-Token. The token is held in memory
+//   only and re-fetched from /api/auth/me after a reload.
+// * Requests go through a pluggable Transport: HTTP for the real backend, or the browser-local demo
+//   transport (src/demo/) for the public read-only demo. Pages and components cannot tell the difference,
+//   which keeps the two experiences identical.
+// * 401s with a session reason (expired / revoked) raise a window event the AuthProvider turns into the
+//   "session expired" screen, instead of every page showing a generic error.
 
 import type {
   Analysis, AuditEntry, Batch, Claim, Detection, EventDetail, EventPage, Graph, InvestigationDetail,
   InvestigationListItem, Overview, Report, Run, SystemStatus, Timeline,
 } from "./types";
+import type {
+  ActivityEntry, AdminUser, AppSettings, AuthConfig, CaseComment, DatasetInfo, DirectoryUser, Invitation, LlmStatus,
+  LoginRecord, Me, PinnedEvidence, Queues, SavedFilter, SessionInfo,
+} from "./types-v2";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public detail?: unknown) {
@@ -16,35 +25,36 @@ export class ApiError extends Error {
   }
 }
 
-const SETTINGS_KEY = "tracelayer.settings";
+export interface TransportResponse { status: number; body: unknown; blob?: Blob; filename?: string }
+export type Transport = (method: string, path: string, init: { json?: unknown; form?: FormData; headers: Record<string, string>; raw?: boolean }) => Promise<TransportResponse>;
 
-export interface ClientSettings { analyst: string; token: string }
+let csrfToken = "";
+export function setCsrfToken(token: string): void { csrfToken = token; }
 
-export function loadSettings(): ClientSettings {
+const httpTransport: Transport = async (method, path, init) => {
+  let res: Response;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { analyst: "analyst", token: "", ...JSON.parse(raw) };
+    res = await fetch(`/api${path}`, {
+      method,
+      credentials: "same-origin",
+      headers: init.json !== undefined ? { ...init.headers, "Content-Type": "application/json" } : init.headers,
+      body: init.form ?? (init.json !== undefined ? JSON.stringify(init.json) : undefined),
+    });
   } catch {
-    /* storage unavailable (private mode): fall back to defaults */
+    throw new ApiError(0, "Cannot reach the TraceLayer API. Is the backend running?");
   }
-  return { analyst: "analyst", token: "" };
-}
-
-export function saveSettings(s: ClientSettings): void {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore */
+  if (init.raw && res.ok) {
+    const name = res.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1];
+    return { status: res.status, body: null, blob: await res.blob(), filename: name };
   }
-}
+  let body: unknown = null;
+  try { body = await res.json(); } catch { body = { detail: res.statusText }; }
+  return { status: res.status, body };
+};
 
-function headers(json: boolean): HeadersInit {
-  const s = loadSettings();
-  const h: Record<string, string> = { "X-Analyst": s.analyst || "analyst" };
-  if (s.token) h.Authorization = `Bearer ${s.token}`;
-  if (json) h["Content-Type"] = "application/json";
-  return h;
-}
+let transport: Transport = httpTransport;
+export function setTransport(t: Transport): void { transport = t; }
+export const isDemoTransport = () => transport !== httpTransport;
 
 function describe(detail: unknown): string {
   if (typeof detail === "string") return detail;
@@ -53,27 +63,28 @@ function describe(detail: unknown): string {
   return "Request failed";
 }
 
-async function request<T>(method: string, path: string, body?: unknown, form?: FormData): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`/api${path}`, {
-      method,
-      headers: headers(body !== undefined),
-      body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
-    });
-  } catch {
-    throw new ApiError(0, "Cannot reach the TraceLayer API. Is the backend running on port 8000?");
-  }
-  if (!res.ok) {
-    let detail: unknown = res.statusText;
-    try {
-      detail = (await res.json()).detail;
-    } catch {
-      /* non-JSON error body */
+const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+async function call(method: string, path: string, json?: unknown, form?: FormData, raw = false): Promise<TransportResponse> {
+  const headers: Record<string, string> = {};
+  if (UNSAFE.has(method) && csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  const res = await transport(method, path, { json, form, headers, raw });
+  if (res.status >= 400) {
+    const detail = (res.body as any)?.detail ?? res.body;
+    const reason = typeof detail === "object" && detail ? (detail as any).reason : undefined;
+    if (res.status === 401 && reason && reason !== "missing" && !path.startsWith("/auth/login")) {
+      window.dispatchEvent(new CustomEvent("tl:auth-lost", { detail: reason }));
+    }
+    if (res.status === 403 && reason === "must_change_password") {
+      window.dispatchEvent(new CustomEvent("tl:must-change-password"));
     }
     throw new ApiError(res.status, describe(detail), detail);
   }
-  return (await res.json()) as T;
+  return res;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, form?: FormData): Promise<T> {
+  return (await call(method, path, body, form)).body as T;
 }
 
 function qs(params: Record<string, unknown>): string {
@@ -85,6 +96,17 @@ function qs(params: Record<string, unknown>): string {
   }
   const s = sp.toString();
   return s ? `?${s}` : "";
+}
+
+export interface InvestigationQuery {
+  view?: "all" | "open" | "mine" | "needs_review" | "unassigned" | "recent";
+  status?: string; severity?: string; priority?: string; q?: string; assignee_id?: string;
+  sort?: "score" | "updated" | "created" | "priority";
+}
+
+export interface CasePatch {
+  expected_version: number; status?: string; priority?: string; assignee_id?: string; reviewer_id?: string;
+  resolution?: string; reason?: string;
 }
 
 export interface EventQuery {
@@ -108,11 +130,29 @@ export const api = {
     request<Detection[]>("GET", `/detections${qs(p)}`),
   rules: () => request<{ id: string; name: string; severity: string; tactic: string; technique: string; description: string }[]>("GET", "/rules"),
 
-  investigations: (p: { status?: string; severity?: string; q?: string } = {}) =>
-    request<InvestigationListItem[]>("GET", `/investigations${qs(p)}`),
+  investigations: (p: InvestigationQuery = {}) =>
+    request<InvestigationListItem[]>("GET", `/investigations${qs(p as Record<string, unknown>)}`),
   investigation: (id: string) => request<InvestigationDetail>("GET", `/investigations/${id}`),
-  patchInvestigation: (id: string, body: { status?: string; assignee?: string; note?: string }) =>
-    request<InvestigationListItem>("PATCH", `/investigations/${id}`, body),
+  updateCase: (id: string, body: CasePatch) => request<InvestigationListItem>("PATCH", `/investigations/${id}`, body),
+  assignToMe: (id: string, version: number) =>
+    request<InvestigationListItem>("POST", `/investigations/${id}/assign-to-me?expected_version=${version}`),
+  queues: () => request<Queues>("GET", "/queues"),
+  activity: (id: string) => request<ActivityEntry[]>("GET", `/investigations/${id}/activity`),
+  comments: (id: string) => request<CaseComment[]>("GET", `/investigations/${id}/comments`),
+  addComment: (id: string, kind: "comment" | "note", body: string) =>
+    request<CaseComment>("POST", `/investigations/${id}/comments`, { kind, body }),
+  editComment: (id: string, cid: string, body: string) =>
+    request<CaseComment>("PATCH", `/investigations/${id}/comments/${cid}`, { body }),
+  deleteComment: (id: string, cid: string) => request<{ ok: boolean }>("DELETE", `/investigations/${id}/comments/${cid}`),
+  pins: (id: string) => request<PinnedEvidence[]>("GET", `/investigations/${id}/evidence`),
+  pin: (id: string, event_id: string, note?: string) =>
+    request<{ ok: boolean }>("POST", `/investigations/${id}/evidence`, { event_id, note }),
+  unpin: (id: string, event_id: string) => request<{ ok: boolean }>("DELETE", `/investigations/${id}/evidence/${event_id}`),
+  directory: () => request<DirectoryUser[]>("GET", "/users/directory"),
+  filters: (scope?: string) => request<SavedFilter[]>("GET", `/filters${qs({ scope })}`),
+  saveFilter: (name: string, scope: string, params: Record<string, unknown>) =>
+    request<SavedFilter>("POST", "/filters", { name, scope, params }),
+  deleteFilter: (fid: string) => request<{ ok: boolean }>("DELETE", `/filters/${fid}`),
   timeline: (id: string) => request<Timeline>("GET", `/investigations/${id}/timeline`),
   graph: (id: string) => request<Graph>("GET", `/investigations/${id}/graph`),
   audit: (id: string) => request<AuditEntry[]>("GET", `/investigations/${id}/audit`),
@@ -147,12 +187,53 @@ export const api = {
   runEvaluation: () => request<Run>("POST", "/reports/evaluation"),
   runBenchmark: (events: number) => request<Run>("POST", "/reports/benchmark", { events }),
 
-  /** Downloads go through fetch (not a plain link) so the auth/analyst headers are sent. */
+  // ---- auth + account
+  authConfig: () => request<AuthConfig>("GET", "/auth/config"),
+  me: () => request<Me>("GET", "/auth/me"),
+  login: (email: string, password: string) => request<Me>("POST", "/auth/login", { email, password }),
+  logout: () => request<{ ok: boolean }>("POST", "/auth/logout"),
+  updateProfile: (display_name: string) => request<Me["user"]>("PATCH", "/auth/me", { display_name }),
+  changePassword: (current_password: string, new_password: string) =>
+    request<Me>("POST", "/auth/password", { current_password, new_password }),
+  sessions: () => request<SessionInfo[]>("GET", "/auth/sessions"),
+  revokeSession: (sid: string) => request<{ ok: boolean }>("DELETE", `/auth/sessions/${sid}`),
+  revokeOtherSessions: () => request<{ revoked: number }>("POST", "/auth/sessions/revoke-others"),
+  loginHistory: () => request<LoginRecord[]>("GET", "/auth/login-history"),
+  register: (body: { invite_token?: string; email: string; display_name: string; password: string }) =>
+    request<{ user: Me["user"] }>("POST", "/auth/register", body),
+  recover: (email: string, code: string, new_password: string) =>
+    request<{ ok: boolean }>("POST", "/auth/recover", { email, code, new_password }),
+
+  // ---- administration
+  users: () => request<AdminUser[]>("GET", "/admin/users"),
+  createUser: (body: { email: string; display_name?: string; role: string; password: string; must_change_password: boolean }) =>
+    request<AdminUser>("POST", "/admin/users", body),
+  patchUser: (uid: string, body: { role?: string; status?: string; display_name?: string }) =>
+    request<AdminUser>("PATCH", `/admin/users/${uid}`, body),
+  revokeUserSessions: (uid: string) => request<{ revoked: number }>("POST", `/admin/users/${uid}/revoke-sessions`),
+  recoveryCode: (uid: string) => request<{ code: string; expires_at: string; email: string }>("POST", `/admin/users/${uid}/recovery-code`),
+  userLoginHistory: (uid: string) => request<LoginRecord[]>("GET", `/admin/users/${uid}/login-history`),
+  invitations: () => request<Invitation[]>("GET", "/admin/invitations"),
+  invite: (email: string | null, role: string) =>
+    request<Invitation & { token: string }>("POST", "/admin/invitations", { email: email || null, role }),
+  revokeInvitation: (iid: string) => request<{ ok: boolean }>("DELETE", `/admin/invitations/${iid}`),
+  settings: () => request<AppSettings>("GET", "/admin/settings"),
+  patchSettings: (body: Partial<AppSettings>) => request<AppSettings>("PATCH", "/admin/settings", body),
+  auditLog: (p: { before_id?: number; action?: string } = {}) =>
+    request<{ items: AuditEntry[]; next_before_id: number | null }>("GET", `/admin/audit${qs(p)}`),
+
+  // ---- datasets + LLM
+  datasets: () => request<DatasetInfo[]>("GET", "/datasets"),
+  dataset: (did: string) => request<DatasetInfo>("GET", `/datasets/${did}`),
+  importDataset: (did: string) => request<Run>("POST", `/datasets/${did}/import`),
+  llmStatus: () => request<LlmStatus>("GET", "/llm/status"),
+  llmTest: () => request<Record<string, any>>("POST", "/llm/test"),
+
+  /** Exports go through the transport (not a plain link) so the session and CSRF rules apply. */
   async download(invId: string, format: string): Promise<void> {
-    const res = await fetch(`/api/investigations/${invId}/export?format=${format}`, { headers: headers(false) });
-    if (!res.ok) throw new ApiError(res.status, `Export failed (${res.status})`);
-    const blob = await res.blob();
-    const name = res.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] ?? `export.${format}`;
+    const res = await call("GET", `/investigations/${invId}/export?format=${format}`, undefined, undefined, true);
+    const blob = res.blob!;
+    const name = res.filename ?? `export.${format}`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

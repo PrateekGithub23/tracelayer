@@ -28,7 +28,7 @@ from app.export import build_bundle, collect, render_csv, render_markdown
 from app.graph import build_graph
 from app.integrity.scope import build_scope, coverage_gaps
 from app.integrity.validator import UNSAFE
-from app.models import AIAnalysis, AuditEntry, Claim, Detection, Event, Investigation, InvestigationEvent, utcnow
+from app.models import AIAnalysis, AuditEntry, Claim, Detection, Event, Investigation, InvestigationEvent, User, utcnow
 from app.schemas import (
     AnalysisOut,
     AnalysisRequest,
@@ -104,8 +104,12 @@ def get_investigation(
     analyses = db.scalars(select(AIAnalysis).where(AIAnalysis.investigation_id == inv.id)
                           .order_by(AIAnalysis.created_at.desc()))  # fmt: skip
     scope = build_scope(db, inv.id)
+    names = {u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(
+        [x for x in (inv.assignee_id, inv.reviewer_id) if x])))}  # fmt: skip
     return InvestigationDetail(
-        **InvestigationOut.model_validate(inv).model_dump(),
+        **InvestigationOut.model_validate(inv).model_dump(exclude={"assignee_name", "reviewer_name"}),
+        assignee_name=names.get(inv.assignee_id or ""),
+        reviewer_name=names.get(inv.reviewer_id or ""),
         detections=[DetectionOut.model_validate(d) for d in dets],
         event_counts={"evidence": counts.get("evidence", 0), "context": counts.get("context", 0)},
         coverage_gaps=coverage_gaps(scope),

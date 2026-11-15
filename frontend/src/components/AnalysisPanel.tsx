@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Cpu, FileCheck2, Sparkles, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useAuth } from "../lib/auth";
 import { api, ApiError } from "../lib/api";
 import { fmtMs, fmtRelative, shortHash, UNSAFE, VERDICT_META, VERDICTS } from "../lib/format";
 import type { Analysis, Claim, Verdict } from "../lib/types";
@@ -51,7 +52,8 @@ function ClaimCard({ claim, analysis, refByEvent }: { claim: Claim; analysis: An
   const [open, setOpen] = useState(UNSAFE.includes(claim.verdict));
   const [note, setNote] = useState(claim.review_note ?? "");
   const [err, setErr] = useState<string | null>(null);
-  const editable = analysis.status === "pending_review";
+  const { can } = useAuth();
+  const editable = analysis.status === "pending_review" && can("claims:review");
   const unsafe = UNSAFE.includes(claim.verdict);
   const review = useMutation({
     mutationFn: (decision: string) => api.reviewClaim(analysis.id, claim.id, decision, note || undefined),
@@ -136,6 +138,7 @@ function ClaimCard({ claim, analysis, refByEvent }: { claim: Claim; analysis: An
 }
 
 function AnalysisView({ analysis, refByEvent }: { analysis: Analysis; refByEvent: Map<string, string> }) {
+  const { can } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Verdict | "all" | "unsafe">("all");
   const [note, setNote] = useState("");
@@ -221,8 +224,9 @@ function AnalysisView({ analysis, refByEvent }: { analysis: Analysis; refByEvent
             <div className="flex flex-wrap gap-2">
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Decision note (recorded in the audit log)"
                 className="h-9 min-w-[240px] flex-1 rounded-lg border border-ink-600 bg-ink-800 px-3 text-[13px]" />
-              <Button variant="success" disabled={blocking.length > 0 || decide.isPending} onClick={() => decide.mutate("approve")}><Check className="h-4 w-4" /> Approve analysis</Button>
-              <Button variant="danger" disabled={decide.isPending} onClick={() => decide.mutate("reject")}><X className="h-4 w-4" /> Reject</Button>
+              {can("analyses:approve") ? <><Button variant="success" disabled={blocking.length > 0 || decide.isPending} onClick={() => decide.mutate("approve")}><Check className="h-4 w-4" /> Approve analysis</Button>
+              <Button variant="danger" disabled={decide.isPending} onClick={() => decide.mutate("reject")}><X className="h-4 w-4" /> Reject</Button></>
+                : <span className="self-center text-[12px] text-fg-faint">Only analysts and administrators can approve analyses.</span>}
             </div>
             {err && <div className="text-xs text-rose-300">{err}</div>}
           </div>
@@ -240,6 +244,7 @@ export function AnalysisPanel({ investigationId, refByEvent }: { investigationId
   const qc = useQueryClient();
   const [engine, setEngine] = useState("auto");
   const [selected, setSelected] = useState<string | null>(null);
+  const { can } = useAuth();
   const list = useQuery({ queryKey: ["analyses", investigationId], queryFn: () => api.analyses(investigationId) });
   const status = useQuery({ queryKey: ["status"], queryFn: api.status, staleTime: 15_000 });
   const create = useMutation({
@@ -265,7 +270,7 @@ export function AnalysisPanel({ investigationId, refByEvent }: { investigationId
         </div>
         <Select label="Engine" value={engine} onChange={setEngine} className="w-48" options={[
           { value: "auto", label: "Auto (LLM → fallback)" }, { value: "ollama", label: "Ollama only" }, { value: "deterministic", label: "Deterministic" }]} />
-        <Button variant="primary" disabled={create.isPending} onClick={() => create.mutate()}>
+        <Button variant="primary" disabled={create.isPending || !can("analyses:create")} title={can("analyses:create") ? undefined : "Viewers cannot generate analyses"} onClick={() => create.mutate()}>
           <Sparkles className="h-4 w-4" /> {create.isPending ? (engine === "deterministic" ? "Generating…" : "Running model…") : "Generate"}
         </Button>
       </div>

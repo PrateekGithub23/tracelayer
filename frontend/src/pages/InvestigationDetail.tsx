@@ -1,20 +1,24 @@
 // Investigation workspace: header (score, entities, status), kill-chain strip, and tabs for
 // AI analysis, timeline, entity graph, evidence table, detections, coverage gaps and audit trail.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, EyeOff, Hash, ListChecks } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Download, EyeOff, ListChecks } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AnalysisPanel } from "../components/AnalysisPanel";
+import { ActivityFeed, CaseControls, CommentsPanel, PinsPanel } from "../components/CasePanel";
 import { EvidenceGraph } from "../components/EvidenceGraph";
 import { useInspector } from "../components/EvidenceInspector";
 import { EventTable } from "../components/EventTable";
 import { Timeline } from "../components/Timeline";
-import { Button, Card, EmptyState, ErrorState, Pill, Select, SeverityBadge, Spinner, Tabs } from "../components/ui";
+import { useToast } from "../components/Toast";
+import { Button, Card, ErrorState, Pill, Select, SeverityBadge, Spinner, Tabs } from "../components/ui";
 import { api } from "../lib/api";
-import { fmtTime, SEVERITY_STYLE, shortHash, TACTIC_LABEL } from "../lib/format";
+import { useAuth } from "../lib/auth";
+import { PRIORITY_META } from "../lib/cases";
+import { fmtTime, SEVERITY_STYLE, TACTIC_LABEL } from "../lib/format";
 
-type Tab = "analysis" | "timeline" | "graph" | "evidence" | "detections" | "audit";
+type Tab = "analysis" | "timeline" | "graph" | "evidence" | "detections" | "collaborate" | "activity";
 const KILL_CHAIN = ["credential-access", "initial-access", "discovery", "execution", "privilege-escalation", "defense-evasion", "lateral-movement", "exfiltration"];
 
 export default function InvestigationDetail() {
@@ -26,15 +30,11 @@ export default function InvestigationDetail() {
   const tab = (params.get("tab") as Tab) || "analysis";
   const setTab = (t: Tab) => setParams((p) => { p.set("tab", t); return p; }, { replace: true });
   const [role, setRole] = useState("evidence");
-  const [exportErr, setExportErr] = useState<string | null>(null);
+  const { can } = useAuth();
+  const toast = useToast();
   const inv = useQuery({ queryKey: ["investigation", id], queryFn: () => api.investigation(id) });
   const timeline = useQuery({ queryKey: ["timeline", id], queryFn: () => api.timeline(id) });
   const graph = useQuery({ queryKey: ["graph", id], queryFn: () => api.graph(id), enabled: tab === "graph" });
-  const audit = useQuery({ queryKey: ["audit", id], queryFn: () => api.audit(id), enabled: tab === "audit" });
-  const patch = useMutation({
-    mutationFn: (status: string) => api.patchInvestigation(id, { status }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["investigation", id] }); qc.invalidateQueries({ queryKey: ["audit", id] }); },
-  });
   // Short refs (E1..En) shared with the validator, so citations in claims and tables read the same.
   const refByEvent = useMemo(() => new Map((timeline.data?.events ?? []).map((e) => [e.id, e.ref])), [timeline.data]);
 
@@ -43,8 +43,7 @@ export default function InvestigationDetail() {
   const i = inv.data!;
   const sev = SEVERITY_STYLE[i.severity];
   const download = async (fmt: string) => {
-    setExportErr(null);
-    try { await api.download(id, fmt); qc.invalidateQueries({ queryKey: ["audit", id] }); } catch (e) { setExportErr((e as Error).message); }
+    try { await api.download(id, fmt); qc.invalidateQueries({ queryKey: ["activity", id] }); } catch (e) { toast("error", (e as Error).message); }
   };
 
   return (
@@ -55,6 +54,7 @@ export default function InvestigationDetail() {
         <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
+              <span className={`text-[12px] font-bold ${PRIORITY_META[i.priority]?.tone}`}>{PRIORITY_META[i.priority]?.label}</span>
               <SeverityBadge severity={i.severity} />
               <Pill mono>{i.id}</Pill>
               {i.approved_analysis_id && <Pill className="text-emerald-300">analysis approved</Pill>}
@@ -78,16 +78,14 @@ export default function InvestigationDetail() {
                 risk score · base {String(i.score_breakdown.max_severity_weight)} + stages {String(i.score_breakdown.kill_chain_stage_bonus)} + volume {String(i.score_breakdown.volume_bonus)}
               </div>
             </div>
-            <div className="flex flex-wrap items-end gap-2 xl:justify-end">
-              <Select label="Status" value={i.status} onChange={(s) => patch.mutate(s)} className="w-40" options={[
-                { value: "open", label: "Open" }, { value: "in_review", label: "In review" }, { value: "closed", label: "Closed" }, { value: "false_positive", label: "False positive" }]} />
+            {can("export:create") && <div className="flex flex-wrap items-end gap-2 xl:justify-end">
               <Button onClick={() => download("zip")} title="ZIP: JSON + events + CSV + report + SHA-256 manifest"><Download className="h-4 w-4" /> Evidence bundle</Button>
               <Button variant="ghost" onClick={() => download("md")}>Report .md</Button>
               <Button variant="ghost" onClick={() => download("csv")}>CSV</Button>
-            </div>
-            {exportErr && <div className="text-xs text-rose-300">{exportErr}</div>}
+            </div>}
           </div>
         </div>
+        <div className="relative mt-4"><CaseControls inv={i} /></div>
         <div className="relative mt-5 grid grid-cols-4 gap-1.5 md:grid-cols-8">
           {KILL_CHAIN.map((t) => {
             const hit = i.tactics.includes(t);
@@ -117,7 +115,8 @@ export default function InvestigationDetail() {
         { id: "graph", label: "Entity graph" },
         { id: "evidence", label: "Events", count: i.event_counts.evidence + i.event_counts.context },
         { id: "detections", label: "Detections", count: i.detections.length },
-        { id: "audit", label: "Audit trail" },
+        { id: "collaborate", label: "Notes & pinned evidence" },
+        { id: "activity", label: "Activity" },
       ]} />
 
       {tab === "analysis" && <AnalysisPanel investigationId={id} refByEvent={refByEvent} />}
@@ -149,22 +148,8 @@ export default function InvestigationDetail() {
           ))}
         </div>
       )}
-      {tab === "audit" && (
-        <Card pad={false} title="Hash-chained audit trail" subtitle="Every analyst decision, analysis and export, linked to the previous entry by SHA-256.">
-          {audit.isLoading ? <Spinner /> : audit.error ? <ErrorState error={audit.error} /> : !audit.data?.length ? <EmptyState title="No actions recorded yet" /> : (
-            <ol className="divide-y divide-ink-700">
-              {audit.data.map((a) => (
-                <li key={a.id} className="grid gap-2 px-4 py-3 text-[12.5px] md:grid-cols-[170px_160px_1fr_auto]">
-                  <span className="font-mono text-[11.5px] text-fg-faint">{fmtTime(a.timestamp)}</span>
-                  <span className="font-medium text-sky-200">{a.action}</span>
-                  <span className="min-w-0 truncate text-fg-muted"><span className="text-fg">{a.actor}</span> · {JSON.stringify(a.details).slice(0, 160)}</span>
-                  <span className="flex items-center gap-1 font-mono text-[11px] text-fg-faint"><Hash className="h-3 w-3" />{shortHash(a.entry_hash, 12)}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </Card>
-      )}
+      {tab === "collaborate" && <div className="space-y-4"><CommentsPanel invId={id} /><PinsPanel invId={id} /></div>}
+      {tab === "activity" && <ActivityFeed invId={id} />}
     </div>
   );
 }

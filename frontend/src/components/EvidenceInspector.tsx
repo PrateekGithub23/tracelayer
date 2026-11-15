@@ -2,11 +2,13 @@
 // ledger position, linked detections) or a list of events (e.g. behind a graph edge
 // or a claim's citations). Any component can open it through useInspector().
 
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileJson, Link2, ShieldAlert, XCircle } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, FileJson, Link2, Pin, ShieldAlert, XCircle } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { Link, useMatch } from "react-router-dom";
+import { api, ApiError } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { useToast } from "./Toast";
 import { EVENT_TYPE_COLOR, fmtBytes, fmtTime, shortHash } from "../lib/format";
 import type { EventItem } from "../lib/types";
 import { Button, Drawer, ErrorState, KV, Pill, SeverityBadge, Spinner } from "./ui";
@@ -84,6 +86,22 @@ function EventRow({ id, onPick }: { id: string; onPick: (id: string) => void }) 
   );
 }
 
+/** Pins the event to the case currently open in the workspace (only shown on a case page, for analysts). */
+function PinButton({ eventId }: { eventId: string }) {
+  const match = useMatch("/investigations/:id");
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const invId = match?.params.id;
+  const pin = useMutation({
+    mutationFn: () => api.pin(invId!, eventId, window.prompt("Why is this event important? (optional)") ?? undefined),
+    onSuccess: () => { toast("success", "Pinned to the case"); qc.invalidateQueries({ queryKey: ["pins", invId] }); qc.invalidateQueries({ queryKey: ["activity", invId] }); },
+    onError: (err) => toast(err instanceof ApiError && err.status === 409 ? "info" : "error", (err as Error).message),
+  });
+  if (!invId || !can("evidence:pin")) return null;
+  return <Button size="sm" onClick={() => pin.mutate()} disabled={pin.isPending}><Pin className="h-3.5 w-3.5" />Pin to this case</Button>;
+}
+
 function EventPanel({ id, onBack }: { id: string; onBack?: () => void }) {
   const q = useQuery({ queryKey: ["event", id], queryFn: () => api.event(id) });
   const verify = useQuery({ queryKey: ["verify", id], queryFn: () => api.verifyEvent(id) });
@@ -109,6 +127,8 @@ function EventPanel({ id, onBack }: { id: string; onBack?: () => void }) {
           <><XCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>Integrity check failed: {verify.data?.issues.join("; ")}</span></>
         )}
       </div>
+
+      <PinButton eventId={e.id} />
 
       {injected && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-400/10 px-3 py-2.5 text-[13px] text-amber-100 ring-1 ring-amber-400/30">

@@ -11,5 +11,5 @@ export default defineConfig({
     proxy: { "/api": { target: process.env.VITE_API_TARGET ?? "http://localhost:8000", changeOrigin: true } },
   },
   build: { chunkSizeWarningLimit: 1200 },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test/setup.ts"] },
+  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test/setup.ts"], include: ["src/**/*.test.{ts,tsx}"] },
 });

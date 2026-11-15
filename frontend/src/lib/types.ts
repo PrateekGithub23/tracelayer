@@ -88,7 +88,17 @@ export interface Investigation {
   last_seen: string;
   entities: Entity[];
   tactics: string[];
-  assignee: string | null;
+  priority: "P1" | "P2" | "P3" | "P4";
+  assignee_id: string | null;
+  assignee_name?: string | null;
+  reviewer_id: string | null;
+  reviewer_name?: string | null;
+  legacy_assignee: string | null;
+  resolution: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  reopen_count: number;
+  version: number;
   approved_analysis_id: string | null;
   created_at: string;
   updated_at: string;

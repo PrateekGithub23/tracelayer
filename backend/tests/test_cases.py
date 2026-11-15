@@ -195,3 +195,11 @@ def test_export_includes_case_state_and_escapes_markdown(team: dict[str, Any]) -
     assert "Analyst notes" in report and "[click](javascript" not in report and "<img>" not in report
     assert md("a|b[c](d)") == "a\\|b\\[c\\](d)"
     assert team["vic"].get(f"/api/investigations/{inv}/export?format=md").status_code == 403
+
+
+def test_detail_includes_owner_names(team: dict[str, Any]) -> None:
+    """Regression (found by the e2e suite): the case header showed 'unassigned' for an assigned case."""
+    a, inv = team["alice"], team["inv"]["id"]
+    _patch(a, inv, assignee_id=team["ids"]["alice"])
+    d = a.get(f"/api/investigations/{inv}").json()
+    assert d["assignee_id"] == team["ids"]["alice"] and d["assignee_name"] == "Alice"

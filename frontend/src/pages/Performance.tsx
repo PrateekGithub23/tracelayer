@@ -6,6 +6,7 @@ import { Gauge, Play, Timer } from "lucide-react";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button, Card, EmptyState, ErrorState, PageHeader, Select, Spinner, Stat } from "../components/ui";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { fmtMs, fmtNum, fmtRelative } from "../lib/format";
 import { useRun } from "../lib/useRun";
@@ -16,6 +17,7 @@ export default function Performance() {
   const q = useQuery({ queryKey: ["performance"], queryFn: api.performance, refetchInterval: 10_000 });
   const [size, setSize] = useState("20000");
   const { run, start, active } = useRun([["performance"]]);
+  const { can } = useAuth();
   const launch = useMutation({ mutationFn: () => api.runBenchmark(Number(size)), onSuccess: (r) => start(r.id) });
   if (q.isLoading) return <Spinner />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
@@ -30,7 +32,7 @@ export default function Performance() {
         actions={<div className="flex items-end gap-2">
           <Select label="" value={size} onChange={setSize} className="w-40" options={[
             { value: "5000", label: "5k background" }, { value: "20000", label: "20k background" }, { value: "50000", label: "50k background" }, { value: "100000", label: "100k background" }]} />
-          <Button variant="primary" disabled={active || launch.isPending} onClick={() => launch.mutate()}><Play className="h-4 w-4" />{active ? `Running (${run?.status})…` : "Run benchmark"}</Button>
+          <Button variant="primary" disabled={active || launch.isPending || !can("benchmark:run")} title={can("benchmark:run") ? undefined : "Administrators only"} onClick={() => launch.mutate()}><Play className="h-4 w-4" />{active ? `Running (${run?.status})…` : "Run benchmark"}</Button>
         </div>}>
         {run?.status === "failed" && <ErrorState error={new Error(run.error ?? "benchmark failed")} />}
         {!bench ? <EmptyState title="No benchmark yet" icon={<Gauge className="h-5 w-5" />}>Run one here, or from the CLI: <code className="font-mono">tracelayer bench --events 100000</code></EmptyState> : (

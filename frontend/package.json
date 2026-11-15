@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "e2e": "playwright test",
     "lint": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "recharts": "^2.13.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.6.2",
     "@testing-library/react": "^16.0.1",
     "@types/cytoscape": "^3.21.8",

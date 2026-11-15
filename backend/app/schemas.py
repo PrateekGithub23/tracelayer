@@ -133,7 +133,9 @@ class InvestigationOut(ORM):
     tactics: list[str]
     priority: str
     assignee_id: str | None
+    assignee_name: str | None = None
     reviewer_id: str | None
+    reviewer_name: str | None = None
     legacy_assignee: str | None
     resolution: str | None
     resolved_at: datetime | None

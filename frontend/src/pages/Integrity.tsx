@@ -6,6 +6,7 @@ import { Beaker, CheckCircle2, FlaskConical, Link2, Play, ShieldCheck, XCircle }
 import { useState } from "react";
 import { VerdictBar } from "../components/AnalysisPanel";
 import { Button, Card, EmptyState, ErrorState, PageHeader, Pill, Select, Spinner, Stat, Tabs, VerdictBadge } from "../components/ui";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { fmtMs, fmtRelative, fmtTime, shortHash, UNSAFE, VERDICT_META, VERDICTS } from "../lib/format";
 import type { Verdict } from "../lib/types";
@@ -25,6 +26,7 @@ const SAMPLE = JSON.stringify({
 
 function Ledger() {
   const batches = useQuery({ queryKey: ["batches"], queryFn: api.batches });
+  const { can } = useAuth();
   const verify = useMutation({ mutationFn: api.verifyLedger });
   const r = verify.data;
   return (
@@ -48,7 +50,7 @@ function Ledger() {
         )}
       </Card>
       <Card title="Verify everything" subtitle="Re-hash every raw record, re-run every parser, rebuild every Merkle root and the full chain, and check the audit log.">
-        <Button variant="primary" disabled={verify.isPending} onClick={() => verify.mutate()}><ShieldCheck className="h-4 w-4" /> {verify.isPending ? "Verifying…" : "Run full verification"}</Button>
+        <Button variant="primary" disabled={verify.isPending || !can("integrity:verify")} title={can("integrity:verify") ? undefined : "Administrators only"} onClick={() => verify.mutate()}><ShieldCheck className="h-4 w-4" /> {verify.isPending ? "Verifying…" : "Run full verification"}</Button>
         {verify.error && <div className="mt-3"><ErrorState error={verify.error} /></div>}
         {r && (
           <div className="mt-4 space-y-3 text-[13px]">
@@ -100,6 +102,7 @@ function Confusion({ confusion }: { confusion: Record<string, Record<string, num
 function Evaluation() {
   const reports = useQuery({ queryKey: ["reports", "evaluation"], queryFn: () => api.reports("evaluation") });
   const { run, start, active } = useRun([["reports", "evaluation"], ["performance"]]);
+  const { can } = useAuth();
   const launch = useMutation({ mutationFn: api.runEvaluation, onSuccess: (r) => start(r.id) });
   const latest = reports.data?.[0];
   const p = latest?.payload;
@@ -112,7 +115,7 @@ function Evaluation() {
           <div className="font-medium">Adversarial evaluation suite</div>
           <div className="text-xs text-fg-muted">Builds the seeded scenario in an isolated in-memory database, then attacks the validator with fabricated citations, invented entities, wrong counts, reversed timelines, misattribution, false absences, dismissals and prompt injection.</div>
         </div>
-        <Button variant="primary" disabled={active || launch.isPending} onClick={() => launch.mutate()}><Play className="h-4 w-4" />{active ? `Running (${run?.status})…` : "Run evaluation"}</Button>
+        <Button variant="primary" disabled={active || launch.isPending || !can("evaluation:run")} title={can("evaluation:run") ? undefined : "Administrators only"} onClick={() => launch.mutate()}><Play className="h-4 w-4" />{active ? `Running (${run?.status})…` : "Run evaluation"}</Button>
       </div>
       {run?.status === "failed" && <ErrorState error={new Error(run.error ?? "evaluation failed")} />}
       {reports.isLoading ? <Spinner /> : !p ? <EmptyState title="No evaluation has been run yet" icon={<Beaker className="h-5 w-5" />}>Run it to produce measured results.</EmptyState> : (
@@ -165,6 +168,7 @@ function Playground() {
   const invs = useQuery({ queryKey: ["investigations"], queryFn: () => api.investigations() });
   const [inv, setInv] = useState("");
   const [text, setText] = useState(SAMPLE);
+  const { can } = useAuth();
   const validate = useMutation({ mutationFn: () => api.validate(inv || invs.data?.[0]?.id || "", text) });
   const r = validate.data;
   return (
@@ -175,7 +179,7 @@ function Playground() {
             options={(invs.data ?? []).map((i) => ({ value: i.id, label: i.title }))} />
           <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false}
             className="h-[380px] w-full rounded-lg border border-ink-600 bg-ink-950 p-3 font-mono text-[12px] leading-relaxed focus:border-sky-500 focus:outline-none" />
-          <Button variant="primary" disabled={!invs.data?.length || validate.isPending} onClick={() => validate.mutate()}><ShieldCheck className="h-4 w-4" /> Validate</Button>
+          <Button variant="primary" disabled={!invs.data?.length || validate.isPending || !can("integrity:validate")} title={can("integrity:validate") ? undefined : "Viewers cannot run the validator"} onClick={() => validate.mutate()}><ShieldCheck className="h-4 w-4" /> Validate</Button>
           <p className="text-[11.5px] text-fg-faint">Citations are short refs (E1…En in the investigation's Events tab) or full event ids.</p>
         </div>
       </Card>
