@@ -416,18 +416,18 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
     )
 
     # 9b. Stated times must match the cited events showing the activity (timezone-converted to UTC).
-    for t in a.times:
-        if t.get("ambiguous"):
-            unsupported.append(f"Time '{t['text']}' uses an ambiguous timezone abbreviation; state the UTC time")
+    for tm in a.times:
+        if tm.get("ambiguous"):
+            unsupported.append(f"Time '{tm['text']}' uses an ambiguous timezone abbreviation; state the UTC time")
             continue
         basis = [e for e in cited if any(_matches(e, m) for m in positive)] or [e for e in cited if _involves(e, a)]
         if not basis:
-            unsupported.append(f"Time '{t['text']}' is not backed by any cited event")
-        elif not _time_ok(t, basis):
-            shown = sorted({f"{e.timestamp:%Y-%m-%d %H:%M:%S}" for e in basis})[:3]
-            contradictions.append(f"Claims '{t['text']}' but the cited evidence is at {', '.join(shown)} UTC")
-        elif t.get("assumed_utc"):
-            warnings.append(f"Time '{t['text']}' has no timezone; it matched when read as UTC")
+            unsupported.append(f"Time '{tm['text']}' is not backed by any cited event")
+        elif not _time_ok(tm, basis):
+            when = sorted({f"{e.timestamp:%Y-%m-%d %H:%M:%S}" for e in basis})[:3]
+            contradictions.append(f"Claims '{tm['text']}' but the cited evidence is at {', '.join(when)} UTC")
+        elif tm.get("assumed_utc"):
+            warnings.append(f"Time '{tm['text']}' has no timezone; it matched when read as UTC")
     trace.append(
         {
             "stage": "5. temporal checks",

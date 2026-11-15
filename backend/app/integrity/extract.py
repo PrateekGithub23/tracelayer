@@ -227,7 +227,10 @@ class Assertions:
 _ZERO_WIDTH = re.compile("[\u200b\u200c\u200d\u2060\ufeff\u00ad]")
 _NUM_WORDS = {w: i for i, w in enumerate(
     ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"])}  # fmt: skip
-_TENS = {w: 10 * (i + 2) for i, w in enumerate(["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"])}
+_TENS = {
+    w: 10 * (i + 2)
+    for i, w in enumerate(["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"])
+}
 _NUM_WORD_RE = re.compile(
     r"\b("
     + "|".join(_TENS)
@@ -410,9 +413,9 @@ def extract(text: str, scope: Scope) -> Assertions:
                 {"kind": kind, "n": int(m["n"].replace(",", "")), "qualifier": (m["q"] or "").strip().lower()}
             )
     for m in _COUNT_TIMES.finditer(qbody):
-        n = {"once": 1, "twice": 2}[m["w"].lower()] if m["w"] else int(m["n"])
+        times_n = {"once": 1, "twice": 2}[m["w"].lower()] if m["w"] else int(m["n"])
         if not any(c["kind"] == "success_auth" for c in a.counts):
-            a.counts.append({"kind": "times", "n": n, "qualifier": (m["q"] or "").strip().lower()})
+            a.counts.append({"kind": "times", "n": times_n, "qualifier": (m["q"] or "").strip().lower()})
     for m in _VOLUME.finditer(qbody):
         mult = 1024**3 if m["u"].lower() in ("gb", "gib") else 1024**2
         a.counts.append({"kind": "bytes", "n": float(m["n"]) * mult, "qualifier": (m["q"] or "").strip().lower()})
