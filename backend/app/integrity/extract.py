@@ -37,11 +37,11 @@ class Mention:
 _ACTIVITY: list[tuple[str, str, frozenset[str], str | None, str | None, bool]] = [
     # (regex, label, event types, outcome, keyword, external destination only)
     (r"failed (?:login|logon|authentication|password|sign-in)s?|(?:login|logon|authentication) (?:failures?|attempts)"
-     r"|brute[- ]?forc\w*|password (?:guessing|spraying)|failed attempts",
+     r"|brute[- ]?forc\w*|password (?:guessing|spraying)|failed attempts|(?:attempts?|logins?|sign-ins?) (?:that|which) failed",
      "failed authentication", frozenset({"auth.login"}), "failure", None, False),
     (r"successful(?:ly)? (?:login|logon|authenticat\w*|sign-in)|logged (?:in|on)|log (?:in|on) successfully"
      r"|authenticated (?:successfully|to|as)|signed in|valid credentials|successful(?:ly)? logged|logging (?:in|on) to"
-     r"|gained (?:\w+ )?access to|got into|broke into",
+     r"|gained (?:\w+ )?access to|got into|broke into|(?:was|were) used to (?:authenticate|sign in|log (?:in|on))",
      "successful authentication", frozenset({"auth.login"}), "success", None, False),
     (r"(?:encoded )?powershell", "PowerShell execution", frozenset({"process.start"}), None, "powershell", False),
     (r"certutil", "certutil execution", frozenset({"process.start"}), None, "certutil", False),
@@ -60,6 +60,9 @@ _ACTIVITY: list[tuple[str, str, frozenset[str], str | None, str | None, bool]] =
      r"|(?:sent|send|transferred|transfer|moved|copied|uploaded)(?: \w+){0,2}? (?:[\d.,]+ ?(?:mb|gb|mib|gib)|data|bytes|files)\b"
      r"|[\d.,]+ ?(?:mb|gb|mib|gib) (?:was |were )?(?:sent|transferred|left|uploaded|exfiltrated)",
      "outbound transfer", frozenset({"network.flow"}), None, None, True),
+    # v3: "connected to <host>" is evidenced by a logon to, or a network flow with, that host.
+    (r"\bconnect(?:ed|ing|s)? to\b|\bconnection to\b", "connection to host", frozenset({"auth.login", "network.flow"}),
+     None, None, False),
     (r"(?:network|outbound) (?:flows?|connections?|traffic)", "network activity", frozenset({"network.flow"}),
      None, None, False),
     (r"instruct\w* (?:the )?(?:ai|llm|language model)s?(?: analysts?)?|prompt injection|adversarial (?:instructions|content|text)",
@@ -106,7 +109,15 @@ _CLAUSE_BREAK = re.compile(r"[.;:!?](?=\s|$)|,\s|\bbut\b|\bhowever\b|\bwhereas\b
 _QUANT_PHRASE = re.compile(r"\bno (?:more|fewer|less) than\b", re.I)
 _UNIVERSAL_FAIL_RE = re.compile(
     r"\b(?:every|all|each)\b(?: \w+){0,3}? (?:login|logon|sign-in|authentication)s?(?: attempts?)?(?: \S+){0,4}? "
-    r"(?:failed|was unsuccessful|were unsuccessful|was rejected|were rejected)\b",
+    r"(?:failed|was unsuccessful|were unsuccessful|was rejected|were rejected)\b"
+    r"|\b(?:rejected|denied|blocked|refused) (?:every|all|each)(?: \w+){0,2}? (?:login|logon|sign-in|authentication)s?(?: attempts?)?",
+    re.I,
+)
+# v3: "every login from X succeeded" / "logins from X all succeeded" asserts there were no failures.
+_UNIVERSAL_SUCCESS_RE = re.compile(
+    r"\b(?:every|all|each)\b(?: \w+){0,3}? (?:login|logon|sign-in|authentication)s?(?: \S+){0,4}? "
+    r"(?:succeeded|was successful|were successful)\b"
+    r"|\b(?:logins?|logons?|sign-ins?|authentications?)(?: \S+){0,4}? all (?:succeeded|were successful)\b",
     re.I,
 )
 _HEDGE_RE = re.compile(
@@ -123,6 +134,10 @@ _DISMISSIVE_RE = re.compile(
     r"\b(?:is|was|are|were|appears?|seems?)\s+(?:to be\s+)?(?:likely\s+)?(?:benign|legitimate|authori[sz]ed|"
     r"expected|harmless)\b|false positive|no (?:further )?action (?:is )?(?:needed|required)|safe to (?:close|ignore)"
     r"|not malicious|no threat"
+    # v3: benign-washing with an article or qualifier: "was a legitimate task", "was just a normal script",
+    # "look like routine user activity"
+    r"|\b(?:is|was|are|were|looks?(?: like)?)\s+(?:(?:just|simply|merely|only|probably|likely)\s+)?(?:an?\s+)?(?:\w+\s+)?"
+    r"(?:legitimate|benign|authori[sz]ed|approved|routine|normal|expected|harmless|sanctioned|scheduled)\b"
     # v2 paraphrases of "nothing to see here"
     r"|\broutine (?:\w+ )?(?:activity|maintenance|patching|traffic|behaviou?r|admin\w*)|\bnormal (?:\w+ ){0,2}"
     r"(?:behaviou?r|traffic|activity|operations?)|(?:safely|can) (?:be )?(?:ignored?|closed)|nothing to worry about"
@@ -155,6 +170,10 @@ _QUAL = (
     r"(?P<q>at least |more than |over |upwards of |in excess of |approximately |about |roughly |around |~|"
     r"fewer than |less than |under |at most |no more than |up to )?"
 )
+_COUNT_FAILED_AFTER = re.compile(
+    r"\b" + _QUAL + r"(?P<n>\d[\d,]*)\s+(?:\w+\s+)?(?:attempts?|logins?|logons?|sign-ins?)\s+(?:that|which)\s+failed",
+    re.I,
+)
 _COUNT_SUCCESS = re.compile(
     r"\b" + _QUAL + r"(?P<n>\d[\d,]*)\s+successful\s+(?:\w+\s+)?(?:logins?|logons?|sign-ins?|authentications?)", re.I
 )
@@ -181,6 +200,18 @@ _VOLUME = re.compile(
 )
 
 _IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.]*\d)")
+# v3: the grammatical subject of an activity verb names an actor ("Svc_backup logged in", "root was added").
+_SUBJECT_RE = re.compile(
+    r"(?:^|[.;!?]\s+|,\s+(?:and\s+)?|\bthat\s+|\bthen\s+)['\"]?([A-Za-z][\w.\-$\\]*)['\"]?\s+(?:then\s+|also\s+|later\s+)?"
+    r"(?:logged|signed|authenticated|ran|executed|was\s+added|were\s+added|joined|accessed|connected|created|"
+    r"cleared|downloaded|launched|started|obtained|gained)\b"
+)
+_NOT_SUBJECTS = {
+    "the", "this", "that", "these", "those", "it", "she", "he", "they", "we", "i", "you", "someone", "somebody",
+    "attacker", "attackers", "adversary", "actor", "user", "users", "account", "accounts", "host", "hosts", "server",
+    "nobody", "everyone", "one", "alert", "activity", "log", "process", "command", "script", "malware", "who",
+    "which", "there", "then", "also", "later", "and", "but", "or", "credentials", "token", "session", "machine",
+}  # fmt: skip
 _REF_TOKENS = re.compile(r"\[?\b(?:E\d+|D\d+|evt_[0-9a-f]{20}|det_[0-9a-f]{20})\b\]?")
 _TOKEN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.\-$@\\]*")
 _LIST_TAIL = r"['\"`]?(?P<names>[\w.\-$@\\]+(?:(?:,\s*|\s+and\s+|,\s+and\s+)['\"`]?[\w.\-$@\\]+)*)"
@@ -379,6 +410,19 @@ def extract(text: str, scope: Scope) -> Assertions:
     for ip in a.ips:
         if not scope.entity_exists("ip", ip):
             a.unknown_entities.append(f"ip:{ip}")
+    # v3: subject-position actors. Known common names (root, admin) count as named users here; unknown
+    # subjects are unknown entities (e.g. "Administrator logged in" when no such account exists).
+    for m in _SUBJECT_RE.finditer(body):
+        tok = _clean_token(m.group(1))
+        low = tok.lower()
+        if low in _NOT_SUBJECTS or _IPV4.fullmatch(tok) or low in a.hosts or low in a.users:
+            continue
+        if scope.entity_exists("user", tok):
+            a.users.add(low)
+        elif scope.entity_exists("host", tok):
+            a.hosts.add(low)
+        elif f"user:{tok}" not in a.unknown_entities and f"host:{low}" not in a.unknown_entities:
+            a.unknown_entities.append(f"user:{tok}")
     # v2: identifier-shaped names that appear without a "host"/"user" keyword (e.g. "reached fin-db-07").
     for m in _IDENT_RE.finditer(body):
         tok = _clean_token(m.group(1)).lower()
@@ -412,6 +456,12 @@ def extract(text: str, scope: Scope) -> Assertions:
         ]
         a.mentions.append(Mention("successful authentication", frozenset({"auth.login"}), "success", None, False,
                                   m.start(), True))  # fmt: skip
+    for m in _UNIVERSAL_SUCCESS_RE.finditer(body):
+        a.mentions = [
+            x for x in a.mentions if not (x.types == frozenset({"auth.login"}) and m.start() <= x.start <= m.end())
+        ]
+        a.mentions.append(Mention("failed authentication", frozenset({"auth.login"}), "failure", None, False,
+                                  m.start(), True))  # fmt: skip
     a.mentions.sort(key=lambda x: x.start)
     # A specific mention (e.g. "PowerShell") subsumes a generic one ("executed") on the same type.
     specific = {t for x in a.mentions if x.keyword for t in x.types}
@@ -423,8 +473,8 @@ def extract(text: str, scope: Scope) -> Assertions:
 
     # ---- quantities ("forty-two" -> "42"; positions are not used after this point)
     qbody = words_to_digits(body)
-    for rx, kind in ((_COUNT_FAILED, "failed_auth"), (_COUNT_HOSTS, "distinct_hosts"), (_COUNT_FLOWS, "flows"),
-                     (_COUNT_SUCCESS, "success_auth")):  # fmt: skip
+    for rx, kind in ((_COUNT_FAILED, "failed_auth"), (_COUNT_FAILED_AFTER, "failed_auth"), (_COUNT_HOSTS, "distinct_hosts"),
+                     (_COUNT_FLOWS, "flows"), (_COUNT_SUCCESS, "success_auth")):  # fmt: skip
         for m in rx.finditer(qbody):
             a.counts.append(
                 {"kind": kind, "n": int(m["n"].replace(",", "")), "qualifier": (m["q"] or "").strip().lower()}

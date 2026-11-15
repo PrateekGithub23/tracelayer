@@ -267,7 +267,11 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
         if injected:
             reasons.append("Conclusion relies on events containing adversarial instructions aimed at AI analysts")
             return result(UNSUPPORTED)
-        if high_dets:
+        if high_dets and (a.hedged or kind == "hypothesis"):
+            # v3: an explicitly tentative benign explanation is legitimate analysis, but never evidence.
+            warnings.append(f"Unverified benign explanation for activity flagged by {len(high_dets)} high/critical "
+                            "detection(s): confirm before relying on it")  # fmt: skip
+        elif high_dets:
             contradictions.append(f"Dismisses activity flagged by {len(high_dets)} high/critical detection(s)")
 
     # 4. Absence and coverage-gap statements ("no exfiltration", "no process telemetry for db-01").
@@ -348,10 +352,23 @@ def validate_claim(claim: ClaimInput, scope: Scope) -> ClaimResult:
         else:
             unsupported.append(f"{m.label}: no evidence of this activity for the named entities")
 
+    # 6b. Identity swap: the cited events show the claimed activity performed by someone else. That does not
+    # prove the named user did *not* also do it, so it is "not shown" (unsupported), not a contradiction; the
+    # reason names who the evidence actually shows. (Contradictions need conflicting evidence, e.g. a decoy.)
+    swapped: set[str] = set()
+    if not (a.correlational or kind == "correlation"):
+        for u in sorted(a.users):
+            if any(_entity_in(e, "user", u) for e in cited):
+                continue
+            actors = {(e.username or "").lower() for e in cited if e.username and any(_matches(e, m) for m in positive)}
+            if actors and u not in actors:
+                unsupported.append(f"Identity not shown: the cited events show {', '.join(sorted(actors))}, not {u}")
+                swapped.add(u)
+
     # 7. Every named entity must appear in the cited evidence.
     for kind_, values in (("ip", a.ips), ("user", a.users), ("host", a.hosts)):
         for v in sorted(values):
-            if any(_entity_in(e, kind_, v) for e in cited):
+            if any(_entity_in(e, kind_, v) for e in cited) or (kind_ == "user" and v in swapped):
                 continue
             seen_in_scope = any(_entity_in(e, kind_, v) for e in scope_events)
             unsupported.append(f"{kind_} {v} does not appear in the cited events"

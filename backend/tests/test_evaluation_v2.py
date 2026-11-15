@@ -21,6 +21,7 @@ def test_development_and_regression_sets(report: dict[str, Any]) -> None:
     assert report["sets"]["dev_v1"]["accuracy"] == 1.0
     assert report["sets"]["regression_v1_heldout"]["accuracy"] == 1.0
     assert report["sets"]["dev_v2"]["accuracy"] == 1.0
+    assert report["sets"]["dev_v3"]["accuracy"] == 1.0
     assert report["summary"]["structural_passed"] == report["summary"]["structural_total"]
     assert report["summary"]["deterministic_baseline_unsafe"] == 0
 
