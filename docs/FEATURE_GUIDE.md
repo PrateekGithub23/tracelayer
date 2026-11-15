@@ -285,3 +285,53 @@ PostgreSQL least privilege (runtime role cannot UPDATE/DELETE evidence), unprivi
 hash-pinned dependencies, SHA-pinned CI actions, a body-size limit, sanitised errors, Markdown-export
 escaping, an open-redirect guard, gitleaks, pip-audit and npm audit, and a stdlib-only bundle verifier.
 ([SECURITY.md](SECURITY.md), [V2_SECURITY_AUDIT.md](V2_SECURITY_AUDIT.md))
+
+# v3 features
+
+## 17. Normalisation v3 and telemetry coverage
+
+- **What:** a new parser version `otrf_windows.v3` (50 Windows Security, Sysmon, PowerShell and WMI event
+  types) with per-event diagnostics (`attributes.norm`: schema `tl-event/3`, status full / partial / raw-only,
+  missing fields, reason) and OCSF-inspired class hints; a coverage API and a **Telemetry coverage** tab;
+  owner-only, audited re-normalisation of existing data (`tracelayer dataset renormalize <id> [--dry-run]`).
+- **Files:** `backend/app/ingestion/windows_v3.py`, `datasets/coverage.py`, `datasets/renormalize.py`,
+  `api/datasets.py` (`GET /api/datasets/coverage`); `frontend/src/components/CoveragePanel.tsx`.
+- **Why:** v2 typed only 3.5% of real events; the rest landed in "other", invisible to detection.
+- **Evidence:** 97.7–99.8% fully normalised across five OTRF datasets, 0 rejected
+  ([REAL_WORLD_DATA_EVALUATION.md](REAL_WORLD_DATA_EVALUATION.md)).
+- **Tests:** `test_datasets.py` (re-normalisation keeps raw, hash, id and batch; ledger still verifies;
+  channel-case and key-spacing quirks).
+- **Explain it:** "Verification re-runs the recorded parser, so I couldn't just fix the old one; I versioned it
+  and re-derived the columns without touching the evidence."
+
+## 18. Detection v3
+
+- **What:** TL-CRED-001 LSASS memory access (T1003.001) and TL-PERS-002 registry Run keys (T1547.001), 13
+  rules in total; late-arriving evidence merges into the existing detection instead of creating a duplicate.
+- **Files:** `backend/app/detection/rules.py`, `detection/engine.py`; [DETECTION_RULES.md](DETECTION_RULES.md).
+- **Evidence:** each new rule detected its technique on a fresh labelled dataset; the T1069 control dataset was
+  missed (no discovery rule).
+- **Tests:** `test_detection_v3.py` (access masks, benign callers, timezone, duplicates, late and missing fields).
+
+## 19. Grounded AI generation and engine v3
+
+- **What:** the default LLM mode. A fact table of deterministic claims the engine has verified → the model
+  writes claims citing fact ids only → event citations are derived → every claim is re-verified → unsafe
+  claims are auto-rejected with a recorded note. Engine v3 adds benign-wash and success/failure phrasing,
+  subject-position actors, hedged-dismissal handling and identity-swap reasons.
+- **Files:** `backend/app/ai/grounded.py`, `ai/service.py`, `integrity/extract.py`, `integrity/validator.py`,
+  `evaluation/heldout_v3.py` (frozen, SHA-pinned in `tests/test_heldout_frozen.py`).
+- **Evidence:** held-out v3 95.2% (v2 engine 76.2%), 0 false verifications; unsafe claims 55.4% → 2.9%,
+  fabricated citations 7.9 → 0, at lower completeness ([AI_EVALUATION.md](AI_EVALUATION.md)).
+- **Explain it:** "The model can no longer cite something it never saw, because it never sees event ids."
+
+## 20. Account usability and release hardening
+
+- **What:** a session-expiry warning, a *My activity* tab, admin user detail with failed sign-ins (24 h),
+  accessible confirmation dialogs (focus trap and restore), `make create-admin` (interactive, no defaults);
+  internal model URLs visible only to administrators and scrubbed from the demo; a gated deploy workflow that
+  builds for the Pages sub-path, runs the demo e2e suite against the artifact and scans it with gitleaks.
+- **Files:** `components/SessionWarning.tsx`, `pages/Account.tsx`, `pages/Admin.tsx`, `components/ui.tsx`,
+  `.github/workflows/deploy-demo.yml`; [RELEASE_SECURITY_REVIEW.md](RELEASE_SECURITY_REVIEW.md).
+- **Tests:** `test_auth.py` (activity, hidden endpoints), `src/test/dialogs.test.tsx`, `e2e-demo/demo.spec.ts`
+  (strict same-origin request policy, deep links under `/tracelayer/`).

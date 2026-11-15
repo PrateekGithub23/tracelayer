@@ -49,7 +49,10 @@ def run(runs: int) -> dict[str, Any]:
                     statuses[classify(ev.event_type, ev.attributes)[0]] += 1
                 row[name]["events_per_sec"].append(round(len(recs) / (time.perf_counter() - t)))
                 n = len(recs)
-                row[name]["coverage"] = {**{k: round(100 * v / n, 2) for k, v in statuses.items()}, "rejected": rejected}
+                row[name]["coverage"] = {
+                    **{k: round(100 * v / n, 2) for k, v in statuses.items()},
+                    "rejected": rejected,
+                }
         for name in ("otrf_windows", "otrf_windows.v3"):
             v = row[name]["events_per_sec"]
             row[name]["median_events_per_sec"] = int(statistics.median(v))
