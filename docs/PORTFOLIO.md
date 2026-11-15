@@ -92,7 +92,7 @@ attack telemetry, hash-chained evidence, ATT&CK detections and a multi-user case
 > Under the hood: real public attack telemetry (OTRF), a hash-chained evidence ledger, 13 ATT&CK detections,
 > multi-user case management, and evaluation on frozen held-out sets, all running on a laptop at zero cost.
 >
-> Interactive demo (no sign-up): <link> · Code: <link>
+> Interactive demo (no sign-up): https://prateekgithub23.github.io/tracelayer/ · Code: https://github.com/PrateekGithub23/tracelayer
 > Built with substantial help from an AI coding assistant. The methodology and trade-offs are documented in the repo.
 >
 > #cybersecurity #detectionengineering #AI #opensource

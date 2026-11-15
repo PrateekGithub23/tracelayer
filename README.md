@@ -53,8 +53,8 @@ which cut unsafe claims to **~3%**.
 
 ## Try it
 
-**Public demo:** not published yet (see [DEPLOYMENT.md](docs/DEPLOYMENT.md) to publish it on GitHub Pages
-for free). Locally: `cd frontend && npm run build:demo && VITE_DEMO=1 npx vite preview`, then
+**Public demo:** **https://prateekgithub23.github.io/tracelayer/** (static, read-only, no sign-up; nothing
+you do leaves your browser tab). Locally: `cd frontend && npm run build:demo && VITE_DEMO=1 npx vite preview`, then
 choose **Start the guided scenario**: *"The Suspicious Login That Wasn't Just a Login"*, eight steps, about two minutes.
 
 **Full application (Docker):**

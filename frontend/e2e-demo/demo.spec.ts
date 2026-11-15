@@ -2,7 +2,9 @@
 // the same workflow rules as the server.
 import { expect, type Page, test } from "@playwright/test";
 
-const BASE = process.env.VITE_BASE ?? "/";
+const LIVE = process.env.DEMO_URL ? new URL(process.env.DEMO_URL) : null;
+const BASE = LIVE ? LIVE.pathname : (process.env.VITE_BASE ?? "/");
+const HOST = LIVE ? LIVE.host : "localhost:5180";
 let offending: string[] = [];
 test.beforeEach(async ({ page }) => {
   offending = [];
@@ -11,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   page.on("request", (r) => {
     const u = new URL(r.url());
     if (u.protocol === "data:" || u.protocol === "blob:") return;
-    if (u.host !== "localhost:5180" || !u.pathname.startsWith(BASE) || u.pathname.includes("/api/")) offending.push(r.url());
+    if (u.host !== HOST || !u.pathname.startsWith(BASE) || u.pathname.includes("/api/")) offending.push(r.url());
   });
 });
 test.afterEach(() => expect(offending, "the static demo must only load its own files").toEqual([]));

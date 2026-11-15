@@ -4,7 +4,7 @@ import { test, type Page } from "@playwright/test";
 test.skip(!process.env.SCREENS, "screenshots only on demand");
 const OUT = process.env.SCREENS_DIR ?? "../docs/screenshots";
 
-const BASE = process.env.VITE_BASE ?? "/";
+const BASE = process.env.DEMO_URL ? new URL(process.env.DEMO_URL).pathname : (process.env.VITE_BASE ?? "/");
 async function go(page: Page, path: string) {
   path = BASE.replace(/\/$/, "") + path;
   await page.evaluate((p) => { window.history.pushState({}, "", p); window.dispatchEvent(new PopStateEvent("popstate")); }, path);

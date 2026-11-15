@@ -42,7 +42,10 @@ Demo). No server code runs anywhere.
   secret-looking content.
 - Datasets in the demo are synthetic or MIT-licensed (OTRF), with attribution.
 
-### Publishing (requires your explicit decision; nothing has been published)
+### Publishing
+
+Published on 2026-11-15: repository https://github.com/PrateekGithub23/tracelayer, demo
+https://prateekgithub23.github.io/tracelayer/. The steps used:
 
 Prerequisites: a free GitHub account, and `gh` (GitHub CLI) authenticated as you (`gh auth login`).
 
@@ -70,6 +73,11 @@ gitleaks on the history and the built output, and refuses to publish secret-look
 content. Optional: add a required reviewer to the `github-pages` environment (Settings → Environments).
 
 ### Verifying a deployment
+
+Automated: run the demo suite against the live site, with the same strict same-origin request policy:
+`cd frontend && DEMO_URL=https://<user>.github.io/tracelayer/ npx playwright test -c playwright.demo.config.ts`.
+
+Manual:
 
 1. Open the URL in a private window and choose **Start the guided scenario**. All eight steps should work.
 2. Developer tools → Network: every request goes to `<user>.github.io/tracelayer/…`, with none to

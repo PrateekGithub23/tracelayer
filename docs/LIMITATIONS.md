@@ -65,9 +65,9 @@ What TraceLayer v2 does **not** do, or does only partially. Each item links to t
 
 - No free host offers persistent PostgreSQL plus an API at $0 without a card, so the full application is
   local-only and the public artifact is a read-only static demo. ([DEPLOYMENT.md](DEPLOYMENT.md))
-- CI has been validated locally (every job's steps run on this machine, and the workflows pass
-  `actionlint`) but has **not run on GitHub**, because no remote repository exists yet. It will be
-  confirmed only after publication.
+- Hosted CI (GitHub Actions) runs lint, types, tests, the evaluation, a PostgreSQL privilege job, browser
+  e2e and security scans. It does not run the real-LLM benchmark or the large real-dataset imports (no model
+  or cached datasets on the runners); those results come from local runs recorded in `benchmarks/results/`.
 - Script-heavy telemetry ingests more slowly (~2.8k events/s parse rate on the Mimikatz dataset), because
   every PowerShell script is scanned for prompt injection.
 
