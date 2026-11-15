@@ -37,7 +37,7 @@ test("guided scenario walks through all eight steps with real data", async ({ pa
     await expect(page.getByText(t)).toBeVisible();
     if (i === 0) await expect(page.locator("#main").getByText("203.0.113.45").first()).toBeVisible();  // the brute-force source, not noise
     if (i === 1) await expect(page.getByText(/failed logins/).first()).toBeVisible();
-    if (i === 4) await expect(page.locator("#main").getByText("llama3.2:3b")).toBeVisible();
+    if (i === 4) { await expect(page.locator("#main").getByText("llama3.2:3b")).toBeVisible(); await expect(page.getByText(/writing freely/)).toBeVisible(); }
     if (i < titles.length - 1) await page.getByRole("button", { name: "Next" }).click();
   }
   const download = page.waitForEvent("download");
@@ -73,6 +73,11 @@ test("AI claims: approval is blocked until unsafe claims are handled", async ({ 
   await page.locator("a[href*='/investigations/inv_']").nth(1).click();
   await page.getByRole("tab", { name: /AI analysis/ }).click();
   await expect(page.getByText("llama3.2:3b").first()).toBeVisible();
+  // Grounded draft (newest): unsafe claims were already rejected by the pipeline, so approval is open.
+  await page.getByRole("button", { name: /^ollama-grounded · score/ }).click();
+  await expect(page.getByRole("button", { name: "Approve analysis" })).toBeEnabled();
+  // Free-form draft: unsafe claims are pending, so the server-side gate (mirrored here) blocks approval.
+  await page.getByRole("button", { name: /^ollama · score/ }).click();
   const approve = page.getByRole("button", { name: "Approve analysis" });
   await expect(approve).toBeVisible();
   await expect(approve).toBeDisabled();
