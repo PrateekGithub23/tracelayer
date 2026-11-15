@@ -30,6 +30,7 @@ from app import audit
 from app.config import get_settings
 from app.datasets.archive import read_members
 from app.datasets.catalog import DATASETS, Dataset
+from app.datasets.coverage import coverage
 from app.ids import new_id
 from app.ingestion.pipeline import ingest_records
 from app.models import DatasetImport, Detection, DetectionEvent, Event, Investigation, InvestigationEvent, utcnow
@@ -160,6 +161,8 @@ def evaluate(db: Session, ds: Dataset) -> dict[str, Any]:
         "alerts_matching_labels": sum(a["matches_label"] for a in alerts),
         "correlations": correlations,
         "cross_source_correlations": sum(c["cross_source"] for c in correlations),
+        "coverage": {k: v for k, v in coverage(db, source).items() if k != "by_source"},
+        "parser": ds.parser,
         "precision_note": (
             "Not computed: the dataset has technique-level labels only and no benign baseline, "
             "so alert-level precision and false-positive rates would be invented."

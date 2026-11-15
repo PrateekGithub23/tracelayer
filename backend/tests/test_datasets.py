@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.datasets import catalog
 from app.datasets.archive import ArchiveError, Limits, read_members
@@ -154,7 +155,15 @@ def test_import_through_api_and_evaluate(
     assert r["technique_recall"] == 1.0 and set(r["techniques_detected"]) == {"T1047", "T1136.001"}
     assert {a["rule_id"] for a in r["alerts"]} >= {"TL-EXEC-002", "TL-PERS-001"}
     assert r["credential_redactions"] == 2 and r["local_time_offsets"] == {"-4h": 4}
-    assert r["top_unmapped"] == [{"source": "Microsoft-Windows-Sysmon/Operational 10", "count": 1}]
+    # v3: Sysmon 10 (process access) is now typed. The synthetic mini records omit fields real Sysmon has
+    # (process GUIDs, granted access), so they are honestly "partial", with the missing fields named.
+    assert r["top_unmapped"] == []
+    st = r["coverage"]["statuses"]
+    assert st["raw_only"] == 0 and st["full"] + st["partial"] == 4 and st["partial"] >= 1
+    assert any(m["field"] == "process.start.process_guid" for m in r["coverage"]["fields_missing"])
+    cov = admin_client.get("/api/datasets/coverage").json()
+    row = next(x for x in cov["by_source"] if x["source"] == f"dataset:{ds.id}")
+    assert row["parser"] == "otrf_windows.v3" and row["full"] + row["partial"] == 4
     assert "Not computed" in r["precision_note"]
     # Re-import is idempotent: same hashes, all duplicates, ledger still verifies.
     assert admin_client.post(f"/api/datasets/{ds.id}/import").json()["status"] == "succeeded"
@@ -163,3 +172,52 @@ def test_import_through_api_and_evaluate(
     sample = zipfile.ZipFile(io.BytesIO(admin_client.get(f"/api/datasets/{ds.id}/sample").content))
     assert "MIT License" in sample.read("LICENSE-NOTICE.txt").decode()
     assert "[REDACTED]" in sample.read("sample.jsonl").decode()  # normalised view is redacted; raw is preserved
+
+
+def test_v2_events_still_verify_and_renormalize_keeps_evidence(db_url: str, tmp_path: Path) -> None:
+    """Adding v3 must not make v2-ingested events look tampered; re-normalising keeps raw and hashes."""
+    from app.datasets.renormalize import renormalize
+    from app.db import session_scope
+    from app.ingestion.pipeline import ingest_records
+    from app.integrity.ledger import verify_ledger
+    from app.models import Event
+
+    ds, f = _mini_dataset(tmp_path)
+    recs = [json.loads(line) for line in zipfile.ZipFile(f).read("mini.json").decode().splitlines()]
+    with session_scope() as s:
+        ingest_records(s, recs, source="dataset:legacy", parser_name="otrf_windows", options={})  # v2 parser
+    with session_scope() as s:
+        assert verify_ledger(s)["ok"]
+        before = {e.id: (e.content_hash, e.raw, e.batch_id) for e in s.scalars(select(Event))}
+        assert {e.event_type for e in s.scalars(select(Event))} >= {"other"}  # v2 left Sysmon 10 raw-only
+        res = renormalize(s, "dataset:legacy")
+        assert res["changed"] == 4 and "process.access" in res["event_types_after"]
+    with session_scope() as s:
+        after = {e.id: (e.content_hash, e.raw, e.batch_id) for e in s.scalars(select(Event))}
+        assert after == before  # evidence untouched
+        assert {e.parser for e in s.scalars(select(Event))} == {"otrf_windows.v3"}
+        assert verify_ledger(s)["ok"]  # verifies against the new parser version
+
+
+def test_v3_adapter_real_world_quirks() -> None:
+    from app.ingestion.windows_v3 import OtrfWindowsV3Parser
+
+    p = OtrfWindowsV3Parser()
+    # Lower-case channel names occur in real OTRF data; v2 silently left these raw-only.
+    ev = p.parse({**BASE, "Channel": "security", "EventID": 5156, "Application": "\\device\\x\\svc.exe",
+                  "SourceAddress": "10.0.0.5", "SourcePort": "5000", "DestAddress": "10.0.0.9", "DestPort": "445",
+                  "Direction": "%%14593", "Protocol": "6"})  # fmt: skip
+    assert ev.event_type == "network.flow" and ev.dst_port == 445 and ev.attributes["norm"]["status"] == "full"
+    # PowerShell 800 writes "HostApplication=" (no spaces) while 4103 writes "Host Application = ".
+    msg = "Context Information:\r\n\tUserId=THESHIRE\\pgustavo\r\n\tHostApplication=powershell.exe -noP -enc SQBmAA"
+    ps = p.parse({**BASE, "Channel": "Windows PowerShell", "EventID": 800, "Message": msg})
+    assert ps.event_type == "script.exec" and ps.username == "pgustavo" and ps.command_line.endswith("-enc SQBmAA")
+    # Missing fields make an event partial (named), never silently "full"; unknown events stay raw with a reason.
+    part = p.parse({**BASE, "Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 1, "Image": "C:\\a\\b.exe"})
+    assert part.attributes["norm"]["status"] == "partial" and "command_line" in part.attributes["norm"]["missing"]
+    raw = p.parse({**BASE, "Channel": "Security", "EventID": 4999})
+    assert raw.event_type == "other" and raw.attributes["norm"]["reason"].startswith("no v3 mapping")
+    # Credentials inside parent command lines and registry values are redacted too.
+    reg = p.parse({**BASE, "Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 13, "Image": "C:\\x.exe",
+                   "TargetObject": "HKLM\\Software\\Run\\x", "Details": "net user bob Secret1 /add"})  # fmt: skip
+    assert "Secret1" not in json.dumps(reg.columns(), default=str)

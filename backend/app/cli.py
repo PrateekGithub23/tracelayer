@@ -45,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--password-stdin", action="store_true")
     sub.add_parser("chain-head")
     dsp = sub.add_parser("dataset")
-    dsp.add_argument("action", choices=["list", "import"])
+    dsp.add_argument("action", choices=["list", "import", "renormalize"])
+    dsp.add_argument("--dry-run", action="store_true")
     dsp.add_argument("dataset_id", nargs="?")
     dsp.add_argument("--file", help="use a local copy (its SHA-256 must still match the catalogue)")
     dsp.add_argument("--json", help="write the evaluation results here")
@@ -107,6 +108,17 @@ def main(argv: list[str] | None = None) -> int:
         from app.datasets.importer import run_import
         from app.db import init_engine, session_scope
         from app.migrate import upgrade
+
+        if args.action == "renormalize":
+            import os
+
+            from app.datasets.renormalize import renormalize
+
+            # Needs UPDATE on events: the owner/migration connection, never the runtime role.
+            init_engine(os.environ.get("TRACELAYER_MIGRATION_DATABASE_URL") or settings.database_url)
+            with session_scope() as db:
+                print(json.dumps(renormalize(db, f"dataset:{args.dataset_id}", dry_run=args.dry_run), indent=1))
+            return 0
 
         upgrade(settings.database_url)
         init_engine(settings.database_url)

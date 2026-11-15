@@ -45,6 +45,16 @@ def list_datasets(
     return [_out(db, d) for d in DATASETS]
 
 
+@router.get("/coverage")
+def telemetry_coverage(
+    db: Session = Depends(get_db), _: Principal = Depends(require("datasets:read"))
+) -> dict[str, Any]:
+    """Normalisation coverage across every ingested source (synthetic, uploads, public datasets)."""
+    from app.datasets.coverage import coverage
+
+    return coverage(db)
+
+
 @router.get("/{dataset_id}")
 def get_dataset(
     dataset_id: str, db: Session = Depends(get_db), _: Principal = Depends(require("datasets:read"))

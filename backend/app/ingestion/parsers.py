@@ -491,3 +491,10 @@ def get_parser(name: str) -> Parser:
         return PARSERS[name]
     except KeyError as exc:
         raise ParseError(f"unknown parser {name!r}; expected one of {sorted(PARSERS)}") from exc
+
+
+# v3: versioned Windows adapter in its own module (imported last to avoid a circular import).
+from app.ingestion.windows_v3 import V3_EVENT_TYPES, OtrfWindowsV3Parser  # noqa: E402
+
+EVENT_TYPES.update(V3_EVENT_TYPES)
+PARSERS[OtrfWindowsV3Parser.name] = OtrfWindowsV3Parser()
