@@ -40,7 +40,7 @@ services:
     environment:
       TRACELAYER_DATABASE_URL: postgresql+psycopg://tracelayer_app:${TL_APP_PASSWORD:-tracelayer-app-local-only}@db:5432/tracelayer
       TRACELAYER_MIGRATION_DATABASE_URL: postgresql+psycopg://tracelayer:${POSTGRES_PASSWORD:-tracelayer-local-only}@db:5432/tracelayer
-      TRACELAYER_LLM_MODE: ${TRACELAYER_LLM_MODE:-auto}
+      TRACELAYER_LLM_MODE: ${TRACELAYER_LLM_MODE:-grounded}
       # Native Ollama on the Mac host (GPU accelerated). With --profile llm use http://ollama:11434
       TRACELAYER_OLLAMA_URL: ${TRACELAYER_OLLAMA_URL:-http://host.docker.internal:11434}
       TRACELAYER_OLLAMA_MODEL: ${TRACELAYER_OLLAMA_MODEL:-llama3.2:3b}

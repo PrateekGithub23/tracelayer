@@ -29,7 +29,7 @@ LEAD_EMAIL, LEAD_PW = "priya@tracelayer.demo", "Velvet-orchard-snapshot-73"
 def build(out: Path, otrf_file: str | None, use_llm: bool) -> dict[str, Any]:
     tmp = tempfile.mkdtemp(prefix="tl-demo-")
     os.environ.update(TRACELAYER_DATABASE_URL=f"sqlite:///{tmp}/demo.db", TRACELAYER_BACKGROUND_JOBS="false",
-                      TRACELAYER_LLM_MODE="auto" if use_llm else "deterministic", TRACELAYER_DATA_DIR=f"{tmp}/data",
+                      TRACELAYER_LLM_MODE="grounded" if use_llm else "deterministic", TRACELAYER_DATA_DIR=f"{tmp}/data",
                       TRACELAYER_ARGON2_TIME_COST="1", TRACELAYER_ARGON2_MEMORY_KIB="8192", TRACELAYER_ARGON2_PARALLELISM="1")  # fmt: skip
     from fastapi.testclient import TestClient
 

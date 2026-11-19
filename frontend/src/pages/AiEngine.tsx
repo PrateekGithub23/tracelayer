@@ -56,10 +56,11 @@ export default function AiEngine() {
         </Card>
         <Card title={<span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Guarantees</span>}>
           <ul className="space-y-2.5 text-[13px] text-fg-muted">
-            <li className="flex gap-2"><Cpu className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />If the model is down, busy or returns invalid JSON in <b className="text-fg">auto</b> mode, the analysis is labelled <Pill>deterministic</Pill> and records why. It is never presented as LLM output.</li>
-            <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />Model output must match a JSON schema, then every claim is checked against its cited events. Unsafe claims block approval.</li>
-            <li className="flex gap-2"><Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />Each analysis stores the requested and actual engine, the model name and digest, the Ollama version, latency and JSON validity.</li>
-            <li className="flex gap-2"><PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />Inference is bounded: one generation at a time, 30 analyses per user per hour, and demo accounts never call the model.</li>
+            {/* Each item: icon + ONE text span, so inline <b>/<Pill> stay in the sentence instead of becoming flex columns. */}
+            <li className="flex gap-2"><Cpu className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" /><span>If the model is down, busy or returns invalid JSON in <b className="text-fg">grounded</b> or <b className="text-fg">auto</b> mode, the analysis is labelled <Pill>deterministic</Pill> and records why. It is never presented as LLM output.</span></li>
+            <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" /><span>Model output must match a JSON schema, then every claim is checked against its cited events. Unsafe claims block approval.</span></li>
+            <li className="flex gap-2"><Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" /><span>Each analysis stores the requested and actual engine, the model name and digest, the Ollama version, latency and JSON validity.</span></li>
+            <li className="flex gap-2"><PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /><span>Inference is bounded: one generation at a time, 30 analyses per user per hour, and demo accounts never call the model.</span></li>
           </ul>
         </Card>
         {can("settings:manage") && (
