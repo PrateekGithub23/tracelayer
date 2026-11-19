@@ -78,45 +78,33 @@ attack telemetry, hash-chained evidence, ATT&CK detections and a multi-user case
 - **Decisions not taken:** no Next.js rewrite (no server-side rendering need); no light theme (it needs a
   colour-token refactor); no LLM-as-judge (a judge can hallucinate too).
 
-## LinkedIn launch post (v3.0.0)
+## LinkedIn launch post (v3.0.0, final)
 
-The hook is a real claim from the demo: the free-form llama3.2:3b draft says "Alice successfully brute forced
-admin credentials after 42 failed attempts". Its six citations are failed logins for jsmith, root (3), admin and
-alice, and only one is Alice's. The 42 is the total from 203.0.113.45 across several accounts. The engine marks
-it contradictory ("Claims 42 failed logins; evidence shows 1 / 11", meaning 1 in the citations and 11 in the
-whole case).
-
-> A local LLM wrote me an incident report blaming a user for "42 failed attempts." Only one failed login it
-> cited was theirs. The 42 came from an IP spraying several accounts.
+> Small AI models can write a convincing security incident report in seconds. But convincing isn't the same as
+> correct, and checking every sentence against the logs by hand defeats the point.
 >
-> I built TraceLayer, an open-source security investigation platform, to catch exactly that.
+> So I built 🛡️TraceLayer, an open-source investigation platform where the AI has to show its evidence.
 >
-> It normalises Windows Security, Sysmon and PowerShell telemetry, hashes every raw record into a
-> tamper-evident ledger, runs 13 MITRE ATT&CK-mapped detections, and correlates related alerts into cases with
-> timelines and entity graphs. FastAPI and PostgreSQL sit behind a React/TypeScript workspace with role-based
-> access and an audit trail.
+> It takes Windows security logs, normalises them, stores every raw record in a tamper-evident ledger, and runs
+> 13 ATT&CK-mapped detections that group related alerts into cases. A local Llama 3.2 model drafts the
+> investigation. Then a deterministic checker compares each claim with the exact log events it cites. Anything
+> unsupported or contradicted is flagged and can't be approved until an analyst reviews it.
 >
-> A local Llama 3.2 3B model drafts each investigation. Then a deterministic Evidence Integrity Engine checks
-> every claim against the events it cites: entities, counts, times, outcomes. Claims come out verified,
-> correlated, hypothesis, missing evidence, unsupported or contradicted, and unsafe ones block approval until
-> an analyst decides.
+> Some results from testing on public lab data:
 >
-> On lab and synthetic data:
-> • 95.2% on a frozen 42-case adversarial set, zero dangerous false verifications
-> • Unsafe AI claims cut from 55.4% to 2.9% by letting the model cite only pre-verified facts
+> • 97–99% of 26,000+ real Windows events fully normalised (up from about 4%).
 >
-> The hardest part was measuring honestly. My first checker accepted 5 of 24 adversarial claims it had never
-> seen, so I now tune only on development sets and score each frozen test set once.
+> • 95% accuracy on 42 test claims the checker had never seen, with zero false claims passed as verified.
 >
-> Built with AI-assisted development; methods and limits are in the repo.
+> • Unsupported AI claims cut from 55% to 3% by having the model write only from already-verified facts.
 >
-> GitHub: https://github.com/PrateekGithub23/tracelayer
+> Built with Python, FastAPI, PostgreSQL and React.
+>
 > Live demo: https://prateekgithub23.github.io/tracelayer/
->
-> #CyberSecurity #SoftwareEngineering #DetectionEngineering #OpenSource #AI
 
-Sources: held-out v3 `evaluation-v3.json` (`sets.heldout_v3`); unsafe rate `llm-v3-freeform-vs-grounded-idle.json`
-(3 investigations × 5 runs per mode); "5 of 24" `heldout-v2-baseline-v1-engine.json` (`unsafe_acceptance`).
+Sources: normalisation `normalization-v2-vs-v3.json` (97.7–99.8% per dataset, 26,228 events; v2 4.4% overall);
+held-out `evaluation-v3.json` (`sets.heldout_v3`: 95.2%, 0 false verifications); unsafe rate
+`llm-v3-freeform-vs-grounded-idle.json` (55.4% → 2.9%, 3 investigations × 5 runs per mode).
 
 ### Carousel (`portfolio/linkedin/`, 3200×2000 PNG)
 
