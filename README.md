@@ -169,7 +169,7 @@ it runs on a single node. The public artifact is a read-only demo, because no fr
 | [AI_EVALUATION](docs/AI_EVALUATION.md) · [EVIDENCE_INTEGRITY](docs/EVIDENCE_INTEGRITY.md) | engine design and measured results, LLM benchmark |
 | [REAL_WORLD_DATA_EVALUATION](docs/REAL_WORLD_DATA_EVALUATION.md) | public dataset selection, adapter, detection results |
 | [PERFORMANCE](docs/PERFORMANCE.md) · [DEPLOYMENT](docs/DEPLOYMENT.md) · [ZERO_COST](docs/ZERO_COST.md) | benchmarks, hosting options, $0 verification |
-| [LIMITATIONS](docs/LIMITATIONS.md) · [PORTFOLIO](docs/PORTFOLIO.md) | what's missing; resume bullets and interview notes |
+| [LIMITATIONS](docs/LIMITATIONS.md) | what's missing |
 
 ## Data and licences
 

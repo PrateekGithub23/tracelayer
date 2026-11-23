@@ -1,6 +1,6 @@
-# Feature guide: what was built, how, why, and how to talk about it
+# Feature guide: what was built, how and why
 
-For each major feature, this guide covers: **what** was implemented · **files** · **how** it works · **why** this design · **testing** · **risks** (security and performance) · **interview** (how to explain it).
+For each major feature, this guide covers: **what** was implemented · **files** · **how** it works · **why** this design · **testing** · **risks** (security and performance).
 
 ---
 
@@ -29,8 +29,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - Ledger appends are serialised, which caps parallel ingest throughput (measured ~18–22k records/s).
 - Large batches are held in memory (50k cap).
 
-**Interview.** "Every raw record is content-addressed. The same SHA-256 is the dedup key, the event id and the tamper check. Batches are Merkle-rooted and chained like a minimal blockchain without consensus. Verification goes further than hash comparison: because parsers are pure, I re-parse the raw record and prove nobody edited the normalised fields analysts actually look at. I found and fixed a race where two concurrent batches could both claim the same new event in their Merkle roots, by moving the dedup lookup inside the ledger lock and adding a Postgres advisory lock."
-
 ---
 
 ## 2. Detection engine
@@ -57,8 +55,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - Thresholds are global, not per-entity baselines.
 - Detection reloads all relevant events on each run (~1 s at 100k). Incremental, watermark-based detection is the next step at larger scale.
 
-**Interview.** "Rules are pure functions over time-ordered tuples, so they're trivially unit-testable. My first brute-force rule used gap-based bursts, which looked fine at 20k events. At 100k, normal typos chained into hour-long bursts and produced 160 false positives. I switched to a bounded sliding window and a reset-on-success state machine, kept 100% recall, and added the exact pattern as a regression test."
-
 ---
 
 ## 3. Correlation
@@ -81,8 +77,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - Entity linking can over-merge when an attacker reuses a common service account.
 - Investigations are never split automatically.
 - Context scope is capped at 1,500 events.
-
-**Interview.** "Correlation is connected components over an entity graph, with a time constraint. The trick is not comparing all pairs: sorting each entity's detections and linking neighbours gives the same components in O(n log n). The score is additive and shown in the UI, so nobody has to trust a black box."
 
 ---
 
@@ -110,8 +104,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - Quantity filtering prefers IP > user > host, so mixed-entity counts can be ambiguous.
 - Timestamps inside claim text aren't checked.
 
-**Interview.** "I treat the model like any untrusted input: parse, validate, and never let it straight into a decision. The validator checks citations, entities, counts, outcomes, order and attribution against the actual events. I built an adversarial suite with fabricated citations, decoy citations, reversed timelines and injected dismissals. I was honest about overfitting: I wrote a held-out set afterwards, it found a real unsafe acceptance, and I fixed it with a general rule rather than a patch, so it now fails safe."
-
 ---
 
 ## 5. AI layer (local LLM with deterministic fallback)
@@ -138,8 +130,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - The prompt is truncated for an 8k context.
 - Model quality varies, which is exactly why the validator exists.
 
-**Interview.** "The AI is pluggable and optional by design. Every generator, whether LLM, templates or pasted text, feeds the same validator. The interesting engineering isn't the model call, it's what happens when the model is wrong, unavailable, or being manipulated by attacker-controlled log content."
-
 ---
 
 ## 6. Analyst workflow and audit trail
@@ -155,8 +145,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 **Testing.** `test_ollama_analysis_review_gate_and_audit` covers the gate, override justification, approval, re-review prevention, audit order and chain verification.
 
 **Risks.** The analyst name is a label, not authenticated identity (see SECURITY.md).
-
-**Interview.** "Approval is a state machine enforced server-side, not a UI convention. You can't approve an analysis while it contains a contradicted claim nobody has looked at."
 
 ---
 
@@ -181,8 +169,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - The timeline renders up to 5,000 SVG nodes; beyond that it needs canvas or aggregation.
 - The investigation bundle is large (~150 KB gzipped) because of Cytoscape, so pages are code-split.
 
-**Interview.** "I designed the UI around one question: 'show me the evidence for that'. Every claim citation, graph edge and timeline point opens the same evidence inspector with the raw record, its hash, its ledger position, and a live integrity check."
-
 ---
 
 ## 8. Export
@@ -204,8 +190,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 **What.** A reproducible adversarial evaluation and a stage-by-stage benchmark that also scores detection quality against ground truth. Both can run from the CLI or the UI and are stored as reports.
 
 **Files.** `backend/app/evaluation/suite.py`, `benchmarks/runner.py`, `docs/BENCHMARKS.md`.
-
-**Interview.** "Benchmarks found four real problems: a one-INSERT-per-row ORM path, a deep-copy hotspot, stale Postgres statistics after bulk load (167 → 65k records/s), and a false-positive explosion at scale. All four are fixed, measured, and have regression coverage."
 
 ---
 
@@ -231,8 +215,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - **Why:** v1's shared token bypassed roles, and its client-supplied analyst name made the audit log
   record forged identities.
 - **Tests:** `test_auth.py`, `test_rbac_matrix.py` (every route × every role), Playwright `e2e/`.
-- **Explain it:** "Sessions are opaque random tokens in HttpOnly cookies; the DB stores only their hash.
-  That lets me revoke instantly, which JWTs can't do without a deny-list."
 - **Risks:** no MFA; in-process rate limits. Details in [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ## 12. Case management
@@ -245,8 +227,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - **Why:** investigations became work that several people share, so changes must be attributable, ordered and conflict-safe.
 - **Tests:** `test_cases.py`, including a real two-thread race where exactly one writer wins, closed cases
   never changing evidence, IDOR checks, and a migration round-trip of v1 data.
-- **Explain it:** "Every PATCH carries the version the analyst saw. SQLAlchemy turns that into
-  `UPDATE … WHERE version = :seen`, so a stale write affects zero rows and the API answers 409."
 
 ## 13. Public telemetry datasets
 
@@ -276,8 +256,6 @@ For each major feature, this guide covers: **what** was implemented · **files**
 - **Files:** `backend/app/demo/build_snapshot.py`, `frontend/src/demo/transport.ts`, `pages/Walkthrough.tsx`,
   `.github/workflows/deploy-demo.yml`.
 - **Tests:** `e2e-demo/demo.spec.ts`: zero `/api` calls, segregation of duties, approval gate, reset on reload.
-- **Explain it:** "The demo isn't mocked: I boot the real backend, run the real pipeline and model, and record
-  its responses. The browser then replays them, so the public site has nothing to attack and costs nothing."
 
 ## 16. Hardening
 
@@ -301,8 +279,6 @@ escaping, an open-redirect guard, gitleaks, pip-audit and npm audit, and a stdli
   ([REAL_WORLD_DATA_EVALUATION.md](REAL_WORLD_DATA_EVALUATION.md)).
 - **Tests:** `test_datasets.py` (re-normalisation keeps raw, hash, id and batch; ledger still verifies;
   channel-case and key-spacing quirks).
-- **Explain it:** "Verification re-runs the recorded parser, so I couldn't just fix the old one; I versioned it
-  and re-derived the columns without touching the evidence."
 
 ## 18. Detection v3
 
@@ -323,7 +299,6 @@ escaping, an open-redirect guard, gitleaks, pip-audit and npm audit, and a stdli
   `evaluation/heldout_v3.py` (frozen, SHA-pinned in `tests/test_heldout_frozen.py`).
 - **Evidence:** held-out v3 95.2% (v2 engine 76.2%), 0 false verifications; unsafe claims 55.4% → 2.9%,
   fabricated citations 7.9 → 0, at lower completeness ([AI_EVALUATION.md](AI_EVALUATION.md)).
-- **Explain it:** "The model can no longer cite something it never saw, because it never sees event ids."
 
 ## 20. Account usability and release hardening
 
